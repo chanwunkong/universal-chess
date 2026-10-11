@@ -33,10 +33,10 @@ export function GameView({ variant, onBack, onEdit }: Props) {
   const [claimed, setClaimed] = useState<Result | null>(null);
   const result = useMemo(() => {
     if (claimed) return claimed;
-    const h = engine.hash(st);
-    const repeats = history.filter(s => engine.hash(s) === h).length;
-    return engine.result(st, repeats);
+    return engine.result(st, history);
   }, [engine, st, history, claimed]);
+  const [claimPending, setClaimPending] = useState(false);
+  const [dialog, setDialog] = useState<{ title: string; lines: string[]; actions: { label: string; primary?: boolean; run: () => void }[] } | null>(null);
   const countInfo = engine.countStatus(st);
   const over = result.kind !== 'ongoing';
   const aiTurn = !over && players[st.turn] === 'ai';
@@ -50,11 +50,19 @@ export function GameView({ variant, onBack, onEdit }: Props) {
     setPromoChoice(null);
     setThinking(false);
     setClaimed(null);
+    setClaimPending(false);
   }
   // 變體改變時重新開始
   useEffect(restart, [engine]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function play(m: Move) {
+    if (claimPending) {
+      // FIDE 9.2.1.1：先宣告要走的棋，走完後局面符合條件即和棋；不符合則照常續弈
+      const next = engine.makeMove(st, m);
+      const r = engine.claimReason(next, [...history, next]);
+      if (r) setClaimed({ kind: 'draw', reason: `要求和棋成立（${r}）` });
+      setClaimPending(false);
+    }
     setHistory(h => [...h, engine.makeMove(h[h.length - 1], m)]);
     setMoves(ms => [...ms, m]);
     setSelected(null);
@@ -74,6 +82,20 @@ export function GameView({ variant, onBack, onEdit }: Props) {
     if (engine.canDeclareCount(st, st.turn) && material(st.turn) < material((1 - st.turn) as Side)) {
       replaceState(engine.declareCount(st, st.turn));
       return;
+    }
+    // 可以要求和棋且子力不佔優時，電腦提出和棋要求
+    const claim = engine.claimReason(st, history);
+    if (claim && material(st.turn) <= material((1 - st.turn) as Side)) {
+      setClaimed({ kind: 'draw', reason: `${variant.sideNames[st.turn]}要求和棋（${claim}）` });
+      return;
+    }
+    // 入玉宣言能獲勝時，電腦宣言
+    if (variant.rules.impasse) {
+      const d = engine.impasseDeclaration(st);
+      if (d.result.kind === 'win' && d.result.winner === st.turn) {
+        setClaimed(d.result);
+        return;
+      }
     }
     if (!workerRef.current)
       workerRef.current = new Worker(new URL('../engine/ai.worker.ts', import.meta.url), { type: 'module' });
@@ -97,6 +119,7 @@ export function GameView({ variant, onBack, onEdit }: Props) {
   function undo() {
     reqId.current++;
     setThinking(false);
+    setClaimPending(false);
     if (claimed) { setClaimed(null); return; }
     // 對 AI 時一次退回到輪到人類
     let n = 1;
@@ -165,9 +188,50 @@ export function GameView({ variant, onBack, onEdit }: Props) {
   const status = result.kind === 'win'
     ? `${variant.sideNames[result.winner]}獲勝（${result.reason}）`
     : result.kind === 'draw' ? `和棋（${result.reason}）`
-      : `輪到${variant.sideNames[st.turn]}${result.check ? '・將軍！' : ''}${thinking ? '・AI 思考中…' : ''}`;
+      : `輪到${variant.sideNames[st.turn]}${result.check ? '・將軍！' : ''}${thinking ? '・AI 思考中…' : ''}${claimPending ? '・請走出要求和棋的那一步' : ''}`;
 
   const topSide: Side = flipped ? 0 : 1;
+
+  const claimNow = humanTurn ? engine.claimReason(st, history) : null;
+  const claimAvailable = humanTurn && (!!claimNow || claimPending || (
+    !!(variant.rules.repetitionClaim || variant.rules.moveLimitClaim) &&
+    legal.some(m => { const n = engine.makeMove(st, m); return !!engine.claimReason(n, [...history, n]); })));
+
+  function requestDraw() {
+    if (claimNow) setClaimed({ kind: 'draw', reason: `${variant.sideNames[st.turn]}要求和棋成立（${claimNow}）` });
+    else setClaimPending(p => !p);
+  }
+
+  function declareImpasse() {
+    const d = engine.impasseDeclaration(st);
+    setDialog({
+      title: '入玉宣言',
+      lines: [...d.conditions.map(([t, ok]) => `${ok ? '✔' : '✘'} ${t}`), '', `宣言結果：${d.result.kind === 'draw' ? '無勝負' : d.result.kind === 'win' && d.result.winner === st.turn ? '宣言方勝' : '宣言方負'}`],
+      actions: [{ label: '取消', run: () => {} }, { label: '宣言', primary: true, run: () => setClaimed(d.result) }],
+    });
+  }
+
+  function proposeImpasse() {
+    const opp = (1 - st.turn) as Side;
+    const r = engine.agreeImpasse(st);
+    const pts = `${variant.sideNames[0]} ${engine.impasseTotal(st, 0)} 點、${variant.sideNames[1]} ${engine.impasseTotal(st, 1)} 點`;
+    if (players[opp] === 'ai') {
+      // 電腦只在自己不會因點數不足而輸時同意
+      if (engine.impasseTotal(st, opp) >= 24) setClaimed(r);
+      else setDialog({ title: '持將棋', lines: [`電腦不同意持將棋（${pts}）。`], actions: [{ label: '確定', primary: true, run: () => {} }] });
+      return;
+    }
+    setDialog({
+      title: `${variant.sideNames[st.turn]}提議持將棋`,
+      lines: [`請${variant.sideNames[opp]}決定是否同意。`, `點數：${pts}（大駒 5 點、小駒 1 點；不足 24 點的一方負）`],
+      actions: [{ label: '不同意', run: () => {} }, { label: '同意', primary: true, run: () => setClaimed(r) }],
+    });
+  }
+
+  function replaySwapped() {
+    setPlayers(p => [p[1], p[0]]);
+    restart();
+  }
   const lastText = last ? `${moves.length}. ${engine.notation(last, history[moves.length - 1].turn)}` : '';
 
   return (
@@ -207,6 +271,18 @@ export function GameView({ variant, onBack, onEdit }: Props) {
         )}
         {humanTurn && st.boardCount?.side === st.turn && (
           <button onClick={() => replaceState(engine.stopCount(st))}><i>■</i>停止數步</button>
+        )}
+        {over && result.kind === 'draw' && result.reason.includes('重下') && (
+          <button className="primary" onClick={replaySwapped}><i>⇄</i>交換先後重下</button>
+        )}
+        {humanTurn && claimAvailable && (
+          <button className={claimPending ? 'active' : ''} onClick={requestDraw}><i>½</i>{claimPending ? '取消要求' : '要求和棋'}</button>
+        )}
+        {humanTurn && variant.rules.impasse && engine.royals(st, st.turn).some(k => engine.inRegion(k, st.turn, 'promoZone')) && (
+          <button onClick={declareImpasse}><i>玉</i>入玉宣言</button>
+        )}
+        {humanTurn && variant.rules.impasse && engine.anyKingEntered(st) && (
+          <button onClick={proposeImpasse}><i>持</i>提議持將棋</button>
         )}
         {humanTurn && st.boardCount && st.boardCount.side !== st.turn && (
           <button onClick={() => setClaimed({ kind: 'draw', reason: '對方數步中，宣告和棋' })}><i>½</i>宣告和棋</button>
@@ -262,6 +338,20 @@ export function GameView({ variant, onBack, onEdit }: Props) {
           </ol>
         </section>
       </aside>
+
+      {dialog && (
+        <div className="modal-bg" onClick={() => setDialog(null)}>
+          <div className="modal sheet" onClick={e => e.stopPropagation()}>
+            <h3>{dialog.title}</h3>
+            {dialog.lines.map((l, i) => <p key={i} className="dialog-line">{l}</p>)}
+            <div className="btns">
+              {dialog.actions.map(a => (
+                <button key={a.label} className={a.primary ? 'primary' : ''} onClick={() => { setDialog(null); a.run(); }}>{a.label}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {promoChoice && (
         <div className="modal-bg" onClick={() => setPromoChoice(null)}>

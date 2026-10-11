@@ -80,7 +80,7 @@ export class Engine {
       if (p.x < this.W && p.y < this.H && this.v.pieces[p.type])
         board[p.y * this.W + p.x] = { type: p.type, side: p.side };
     }
-    return { board, turn: 0, hands: [{}, {}], ep: -1, halfmoveClock: 0, passes: 0 };
+    return { board, turn: 0, hands: [{}, {}], ep: -1, halfmoveClock: 0, passes: 0, ply: 0 };
   }
 
   // ---------------- 走法生成 ----------------
@@ -307,7 +307,7 @@ export class Engine {
     const hands: [Record<string, number>, Record<string, number>] = [st.hands[0], st.hands[1]];
     const next: GameState = {
       board, hands, turn: (1 - side) as Side, ep: -1,
-      halfmoveClock: st.halfmoveClock + 1, passes: 0,
+      halfmoveClock: st.halfmoveClock + 1, passes: 0, ply: (st.ply ?? 0) + 1,
     };
     if (m.pass) {
       next.passes = st.passes + 1;
@@ -541,9 +541,20 @@ export class Engine {
     return h;
   }
 
-  result(st: GameState, repeats = 1): Result {
+  /** 同一局面在對局紀錄中出現的位置（history 最後一項必須是 st） */
+  private repeatIndices(st: GameState, history?: GameState[]): number[] {
+    if (!history?.length) return [0];
+    const h = this.hash(st);
+    const idx: number[] = [];
+    history.forEach((s, i) => { if (this.hash(s) === h) idx.push(i); });
+    return idx;
+  }
+
+  result(st: GameState, history?: GameState[]): Result {
     const side = st.turn, opp = (1 - side) as Side;
     const rules = this.v.rules;
+    const reps = this.repeatIndices(st, history);
+    const repeats = reps.length;
     if (rules.win === 'captureRoyal') {
       for (const s of [side, opp] as Side[]) if (!this.royals(st, s).length)
         return { kind: 'win', winner: (1 - s) as Side, reason: '王被吃掉' };
@@ -573,10 +584,110 @@ export class Engine {
     }
     const cs = this.countStatus(st);
     if (cs && cs.ply > cs.limit) return { kind: 'draw', reason: `數步到達上限（${cs.limit / 2} 回合）` };
-    if (rules.repetition > 0 && repeats >= rules.repetition) return { kind: 'draw', reason: `同一局面重複 ${repeats} 次` };
+    if (rules.repetition > 0 && repeats >= rules.repetition) {
+      if (rules.perpetualCheckLoses && history) {
+        // 從第一次出現到現在的手順中，若某方每一步都在將軍 → 該方判負
+        const first = reps[0], last = history.length - 1;
+        for (const s of [0, 1] as Side[]) {
+          let moves = 0, checks = 0;
+          for (let j = first + 1; j <= last; j++) {
+            if (history[j - 1].turn !== s) continue;
+            moves++;
+            if (this.inCheck(history[j], (1 - s) as Side)) checks++;
+          }
+          if (moves > 0 && checks === moves) return { kind: 'win', winner: (1 - s) as Side, reason: '連續將軍造成重複局面（將軍方判負）' };
+        }
+      }
+      return { kind: 'draw', reason: `同一局面出現 ${repeats} 次` };
+    }
+    if (rules.maxPlies && (st.ply ?? 0) >= rules.maxPlies && !check)
+      return { kind: 'draw', reason: `達到 ${rules.maxPlies} 手（持將棋，無勝負）` };
+    if (rules.deadPosition && this.isDeadByMaterial(st)) return { kind: 'draw', reason: '子力不足，雙方都無法將死' };
     if (rules.moveLimit > 0 && st.halfmoveClock >= rules.moveLimit) return { kind: 'draw', reason: `${rules.moveLimit / 2} 回合無吃子` };
     if (st.passes >= 2) return { kind: 'draw', reason: '雙方連續停著' };
     return { kind: 'ongoing', check };
+  }
+
+  // ---------------- 和棋要求（FIDE 9.2、9.3） ----------------
+
+  /** 目前局面輪走方可以提出的和棋要求理由 */
+  claimReason(st: GameState, history: GameState[]): string | null {
+    const r = this.v.rules;
+    if (r.repetitionClaim && this.repeatIndices(st, history).length >= r.repetitionClaim) return `同一局面出現 ${r.repetitionClaim} 次`;
+    if (r.moveLimitClaim && st.halfmoveClock >= r.moveLimitClaim) return `${r.moveLimitClaim / 2} 回合無吃子、無兵移動`;
+    return null;
+  }
+
+  /** 子力不足的死局：只剩王、或只剩一個輕子、或只剩同色格的象 */
+  isDeadByMaterial(st: GameState): boolean {
+    let minors = 0, knights = 0;
+    const bishopColors = new Set<number>();
+    for (let i = 0; i < this.N; i++) {
+      const p = st.board[i];
+      if (!p) continue;
+      const d = this.v.pieces[p.type];
+      if (d?.royal) continue;
+      if (!d?.minor) return false;
+      minors++;
+      if (d.minor === 'knight') knights++;
+      else bishopColors.add(((i % this.W) + Math.floor(i / this.W)) % 2);
+    }
+    if (minors <= 1) return true;
+    return knights === 0 && bishopColors.size === 1;
+  }
+
+  // ---------------- 持將棋（日本將棋聯盟 対局規則 第 9 条） ----------------
+
+  private piecePoints(type: string): number {
+    const d = this.v.pieces[type];
+    return d?.royal ? 0 : d?.points ?? 1;
+  }
+
+  /** 合意持將棋時的點數：己方所有棋子（盤上與持駒，不含玉） */
+  impasseTotal(st: GameState, side: Side): number {
+    let pts = 0;
+    for (const p of st.board) if (p && p.side === side) pts += this.piecePoints(p.type);
+    for (const [t, n] of Object.entries(st.hands[side])) pts += this.piecePoints(t) * n;
+    return pts;
+  }
+
+  /** 入玉：至少一方的玉在敵陣（第 9 条第 1～3 項的前提） */
+  anyKingEntered(st: GameState): boolean {
+    return ([0, 1] as Side[]).some(s => this.royals(st, s).some(k => this.inRegion(k, s, 'promoZone')));
+  }
+
+  agreeImpasse(st: GameState): Result {
+    const pts = [this.impasseTotal(st, 0), this.impasseTotal(st, 1)];
+    const lose = ([0, 1] as Side[]).filter(s => pts[s] < 24);
+    const detail = `${this.v.sideNames[0]} ${pts[0]} 點、${this.v.sideNames[1]} ${pts[1]} 點`;
+    if (lose.length === 1) return { kind: 'win', winner: (1 - lose[0]) as Side, reason: `持將棋：${detail}，不足 24 點的一方負` };
+    if (lose.length === 2) return { kind: 'draw', reason: `持將棋：${detail}，雙方皆不足 24 點` };
+    return { kind: 'draw', reason: `持將棋：${detail}，無勝負（交換先後重下）` };
+  }
+
+  /** 入玉宣言（第 9 条第 5 項）：檢查條件並計算結果 */
+  impasseDeclaration(st: GameState): { conditions: [string, boolean][]; points: number; result: Result } {
+    const side = st.turn;
+    const kings = this.royals(st, side);
+    let inCamp = 0, pts = 0;
+    for (let i = 0; i < this.N; i++) {
+      const p = st.board[i];
+      if (!p || p.side !== side || this.v.pieces[p.type]?.royal) continue;
+      if (this.inRegion(i, side, 'promoZone')) { inCamp++; pts += this.piecePoints(p.type); }
+    }
+    for (const [t, n] of Object.entries(st.hands[side])) pts += this.piecePoints(t) * n;
+    const conditions: [string, boolean][] = [
+      ['玉在敵陣三段以內', kings.length > 0 && kings.every(k => this.inRegion(k, side, 'promoZone'))],
+      [`敵陣三段以內有 10 枚以上己方棋子（目前 ${inCamp} 枚）`, inCamp >= 10],
+      ['玉沒有被將軍', !this.inCheck(st, side)],
+      [`點數 24 點以上（目前 ${pts} 點，31 點以上勝）`, pts >= 24],
+    ];
+    const name = this.v.sideNames[side];
+    let result: Result;
+    if (conditions.some(c => !c[1])) result = { kind: 'win', winner: (1 - side) as Side, reason: `${name}入玉宣言不成立，宣言方負` };
+    else if (pts >= 31) result = { kind: 'win', winner: side, reason: `${name}入玉宣言成立（${pts} 點）` };
+    else result = { kind: 'draw', reason: `${name}入玉宣言 ${pts} 點，無勝負（交換先後重下）` };
+    return { conditions, points: pts, result };
   }
 
   // ---------------- 記譜 ----------------

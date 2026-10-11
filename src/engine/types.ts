@@ -56,6 +56,10 @@ export interface PieceDef {
   nifu?: boolean;
   /** 打入限制：不得打入將死（打步詰） */
   noDropMate?: boolean;
+  /** 計分（將棋持將棋：大駒 5、小駒 1） */
+  points?: number;
+  /** 判斷子力不足死局用（FIDE 5.2.2）：輕子種類 */
+  minor?: 'knight' | 'bishop';
   /** 泰國／柬埔寨數步規則中的身分 */
   countAs?: 'rook' | 'bishop' | 'knight' | 'queen';
 }
@@ -94,10 +98,22 @@ export interface RulesDef {
   counting?: 'makruk' | 'cambodian';
   /** 以下列棋子將死無效 */
   noMateBy?: string[];
-  /** 同一局面出現 N 次為和棋，0 = 關閉 */
+  /** 同一局面出現 N 次自動和棋，0 = 關閉 */
   repetition: number;
-  /** 連續 N 個半回合無吃子（且無兵移動）為和棋，0 = 關閉 */
+  /** 連續 N 個半回合無吃子（且無兵移動）自動和棋，0 = 關閉 */
   moveLimit: number;
+  /** 同一局面出現 N 次時，輪走方可以要求和棋（FIDE 9.2） */
+  repetitionClaim?: number;
+  /** N 個半回合無吃子且無兵移動時，可以要求和棋（FIDE 9.3） */
+  moveLimitClaim?: number;
+  /** 子力不足、雙方都不可能將死時自動和棋（FIDE 5.2.2） */
+  deadPosition?: boolean;
+  /** 重複局面的過程中，一方每一步都在將軍時，該方判負 */
+  perpetualCheckLoses?: boolean;
+  /** 總手數（半回合）達到上限時判和（將棋 500 手持將棋）；若正在連續將軍則等將軍中斷 */
+  maxPlies?: number;
+  /** 日本將棋聯盟的持將棋規則（合意 24 點、入玉宣言 31 點） */
+  impasse?: 'jsa';
 }
 
 export interface Placement {
@@ -148,6 +164,8 @@ export interface GameState {
   ep: number; // 過路兵格，-1 表示無
   halfmoveClock: number;
   passes: number;
+  /** 已走的總手數（半回合） */
+  ply?: number;
   /** 數步：limit / ply 皆以半回合計（對應 Fairy-Stockfish 的 countingLimit / countingPly） */
   count?: { limit: number; ply: number };
   /** 棋盤數：由劣勢方宣告，ply 從 1 起算 */

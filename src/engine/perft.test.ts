@@ -210,3 +210,83 @@ describe('sourced rules', () => {
     expect(e.hash(fresh)).not.toBe(h1); // 王動過後失去入堡權：局面不同
   });
 });
+
+describe('FIDE and JSA rules', () => {
+  const at = (e: Engine, s: string) => (s.charCodeAt(1) - 49) * e.W + s.charCodeAt(0) - 97;
+  const play = (e: Engine, s: GameState, u: string) => {
+    const ms = e.legalMoves(s).filter(m => (m.from < 0 ? '*' : e.sqName(m.from)) + e.sqName(m.to) === u);
+    const m = ms.find(m => !m.promo) ?? ms[0];
+    if (!m) throw new Error('illegal ' + u);
+    return e.makeMove(s, m);
+  };
+  const run = (e: Engine, us: string[]) => {
+    const h = [e.initialState()];
+    for (const u of us) h.push(play(e, h[h.length - 1], u));
+    return h;
+  };
+
+  it('chess: threefold is a claim, fivefold is automatic', () => {
+    const e = get('chess');
+    const loop = ['g1f3', 'g8f6', 'f3g1', 'f6g8'];
+    const h3 = run(e, [...loop, ...loop]);
+    expect(e.result(h3[h3.length - 1], h3).kind).toBe('ongoing');
+    expect(e.claimReason(h3[h3.length - 1], h3)).toContain('3');
+    const h5 = run(e, [...loop, ...loop, ...loop, ...loop]);
+    expect(e.result(h5[h5.length - 1], h5)).toMatchObject({ kind: 'draw' });
+  });
+
+  it('chess: dead positions by material', () => {
+    const e = get('chess');
+    const st = e.initialState();
+    st.board.fill(null);
+    st.board[at(e, 'e1')] = { type: 'c.k', side: 0 };
+    st.board[at(e, 'e8')] = { type: 'c.k', side: 1 };
+    st.board[at(e, 'c1')] = { type: 'c.b', side: 0 };
+    expect(e.result(st)).toMatchObject({ kind: 'draw' });
+    st.board[at(e, 'f8')] = { type: 'c.b', side: 1 }; // c1 與 f8 同為深色格
+    expect(e.result(st)).toMatchObject({ kind: 'draw' });
+    st.board[at(e, 'f8')] = { type: 'c.n', side: 1 };
+    expect(e.result(st).kind).toBe('ongoing'); // 象對馬仍可能將死
+  });
+
+  it('shogi: perpetual check repetition loses for the checking side', () => {
+    const e = get('shogi');
+    const st = e.initialState();
+    st.board.fill(null);
+    st.board[at(e, 'e1')] = { type: 's.k', side: 0 };
+    st.board[at(e, 'a9')] = { type: 's.k', side: 1 };
+    st.board[at(e, 'b1')] = { type: 's.r', side: 0 };
+    st.board[at(e, 'i8')] = { type: 's.g', side: 1 };
+    const h = [st];
+    // b1b9 將軍後，白方車在 b9/b8 之間反覆將軍
+    for (const u of ['b1b9', 'a9a8', 'b9b8', 'a8a9']) h.push(play(e, h[h.length - 1], u));
+    for (let i = 0; i < 3; i++) for (const u of ['b8b9', 'a9a8', 'b9b8', 'a8a9']) {
+      h.push(play(e, h[h.length - 1], u));
+      const r = e.result(h[h.length - 1], h);
+      if (r.kind !== 'ongoing') {
+        expect(r).toMatchObject({ kind: 'win', winner: 1 });
+        return;
+      }
+    }
+    throw new Error('no perpetual check detected');
+  });
+
+  it('shogi: impasse declaration needs 10 pieces in camp and 31 points to win', () => {
+    const e = get('shogi');
+    const st = e.initialState();
+    st.board.fill(null);
+    st.board[at(e, 'e8')] = { type: 's.k', side: 0 };
+    st.board[at(e, 'e2')] = { type: 's.k', side: 1 };
+    const camp = ['a7', 'b7', 'c7', 'd7', 'f7', 'g7', 'h7', 'i7', 'a8', 'b8'];
+    camp.forEach(c => { st.board[at(e, c)] = { type: 's.+p', side: 0 }; });
+    st.board[at(e, 'c8')] = { type: 's.r', side: 0 };
+    st.board[at(e, 'd8')] = { type: 's.b', side: 0 };
+    st.hands[0] = { 's.p': 11 };
+    // 10 + 5 + 5 + 11 = 31 點
+    expect(e.impasseDeclaration(st).result).toMatchObject({ kind: 'win', winner: 0 });
+    st.hands[0] = { 's.p': 5 };
+    expect(e.impasseDeclaration(st).result.kind).toBe('draw'); // 25 點：無勝負
+    st.board[at(e, 'a7')] = null; st.board[at(e, 'b7')] = null; st.board[at(e, 'c8')] = null; st.board[at(e, 'd8')] = null;
+    expect(e.impasseDeclaration(st).result).toMatchObject({ kind: 'win', winner: 1 }); // 不足 10 枚：宣言方負
+  });
+});

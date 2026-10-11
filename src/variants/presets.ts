@@ -36,8 +36,8 @@ const chessPieces: Record<string, PieceDef> = {
   'c.k': piece('c.k', '國王', '♚', 'glyph', [step(ALL8)], { royal: true }),
   'c.q': piece('c.q', '皇后', '♛', 'glyph', [slide(ALL8)], { value: 9 }),
   'c.r': piece('c.r', '城堡', '♜', 'glyph', [slide(ORTH)], { value: 5, castlePartner: true }),
-  'c.b': piece('c.b', '主教', '♝', 'glyph', [slide(DIAG)], { value: 3.2 }),
-  'c.n': piece('c.n', '騎士', '♞', 'glyph', [step(KNIGHT)], { value: 3 }),
+  'c.b': piece('c.b', '主教', '♝', 'glyph', [slide(DIAG)], { value: 3.2, minor: 'bishop' }),
+  'c.n': piece('c.n', '騎士', '♞', 'glyph', [step(KNIGHT)], { value: 3, minor: 'knight' }),
   'c.p': piece('c.p', '士兵', '♟', 'glyph', [
     step([[0, 1]], { mode: 'move' }),
     step([[0, 2]], { mode: 'move', lame: true, initial: true }),
@@ -47,11 +47,15 @@ const chessPieces: Record<string, PieceDef> = {
 const BACK = ['c.r', 'c.n', 'c.b', 'c.q', 'c.k', 'c.b', 'c.n', 'c.r'];
 
 const chess: VariantDef = {
-  id: 'chess', name: '西洋棋', description: '國際象棋。含入堡、吃過路兵、兵升變。',
+  id: 'chess', name: '西洋棋', description: '國際象棋，依 FIDE 棋規：入堡、吃過路兵、兵升變；三次重複與 50 回合可要求和棋，五次重複、75 回合與子力不足自動和棋。',
   board: { width: 8, height: 8, cell: 'square', checkered: true },
   pieces: chessPieces,
   setup: mirrorSetup({ 0: BACK, 1: Array(8).fill('c.p') }, 8, 8),
-  rules: { win: 'checkmate', stalemate: 'draw', promotionZone: 1, castling: true, repetition: 3, moveLimit: 100 },
+  // FIDE 棋規：三次重複、50 回合可要求和棋（9.2、9.3）；五次重複、75 回合自動和棋（9.6）；死局和棋（5.2.2）
+  rules: {
+    win: 'checkmate', stalemate: 'draw', promotionZone: 1, castling: true,
+    repetition: 5, moveLimit: 150, repetitionClaim: 3, moveLimitClaim: 100, deadPosition: true,
+  },
   sideNames: ['白方', '黑方'], sideColors: ['#f4f1e8', '#2b2b2b'],
 };
 
@@ -109,8 +113,8 @@ const GOLD: Vec[] = [...ORTH, [1, 1], [-1, 1]];
 const goldMove = [step(GOLD)];
 const shogiPieces: Record<string, PieceDef> = {
   's.k': piece('s.k', '玉將/王將', ['玉', '王'], 'shogi', [step(ALL8)], { royal: true }),
-  's.r': piece('s.r', '飛車', '飛', 'shogi', [slide(ORTH)], { value: 10, promotesTo: ['s.+r'] }),
-  's.b': piece('s.b', '角行', '角', 'shogi', [slide(DIAG)], { value: 8, promotesTo: ['s.+b'] }),
+  's.r': piece('s.r', '飛車', '飛', 'shogi', [slide(ORTH)], { value: 10, promotesTo: ['s.+r'], points: 5 }),
+  's.b': piece('s.b', '角行', '角', 'shogi', [slide(DIAG)], { value: 8, promotesTo: ['s.+b'], points: 5 }),
   's.g': piece('s.g', '金將', '金', 'shogi', goldMove, { value: 6 }),
   's.s': piece('s.s', '銀將', '銀', 'shogi', [step([...DIAG, [0, 1]])], { value: 5, promotesTo: ['s.+s'] }),
   's.n': piece('s.n', '桂馬', '桂', 'shogi', [step([[1, 2], [-1, 2]])], { value: 4, promotesTo: ['s.+n'], mustPromoteDepth: 2 }),
@@ -118,15 +122,15 @@ const shogiPieces: Record<string, PieceDef> = {
   's.p': piece('s.p', '步兵', '歩', 'shogi', [step([[0, 1]])], {
     value: 1, promotesTo: ['s.+p'], mustPromoteDepth: 1, nifu: true, noDropMate: true,
   }),
-  's.+r': piece('s.+r', '龍王', '龍', 'shogi', [slide(ORTH), step(DIAG)], { value: 12, demotesTo: 's.r' }),
-  's.+b': piece('s.+b', '龍馬', '馬', 'shogi', [slide(DIAG), step(ORTH)], { value: 10, demotesTo: 's.b' }),
+  's.+r': piece('s.+r', '龍王', '龍', 'shogi', [slide(ORTH), step(DIAG)], { value: 12, demotesTo: 's.r', points: 5 }),
+  's.+b': piece('s.+b', '龍馬', '馬', 'shogi', [slide(DIAG), step(ORTH)], { value: 10, demotesTo: 's.b', points: 5 }),
   's.+s': piece('s.+s', '成銀', '全', 'shogi', goldMove, { value: 6, demotesTo: 's.s' }),
   's.+n': piece('s.+n', '成桂', '圭', 'shogi', goldMove, { value: 6, demotesTo: 's.n' }),
   's.+l': piece('s.+l', '成香', '杏', 'shogi', goldMove, { value: 6, demotesTo: 's.l' }),
   's.+p': piece('s.+p', 'と金', 'と', 'shogi', goldMove, { value: 6, demotesTo: 's.p' }),
 };
 const shogi: VariantDef = {
-  id: 'shogi', name: '日本將棋', description: '吃掉的棋子可以打入，敵陣三排可升變。含二步、打步詰規則。',
+  id: 'shogi', name: '日本將棋', description: '吃掉的棋子可以打入，敵陣三排可升變。依日本將棋聯盟規則：二步、打步詰、千日手、連續王手千日手、持將棋與入玉宣言。',
   board: { width: 9, height: 9, cell: 'square' },
   pieces: shogiPieces,
   setup: mirrorSetup({
@@ -134,7 +138,11 @@ const shogi: VariantDef = {
     1: [null, 's.b', null, null, null, null, null, 's.r', null],
     2: Array(9).fill('s.p'),
   }, 9, 9, 'rotate'),
-  rules: { win: 'checkmate', stalemate: 'loss', promotionZone: 3, drops: true, repetition: 4, moveLimit: 0 },
+  // 日本將棋聯盟「対局規則」：千日手（同一局面 4 次）、連續王手千日手將軍方負、持將棋（24 點／入玉宣言 31 點／500 手）
+  rules: {
+    win: 'checkmate', stalemate: 'loss', promotionZone: 3, drops: true,
+    repetition: 4, moveLimit: 0, perpetualCheckLoses: true, maxPlies: 500, impasse: 'jsa',
+  },
   sideNames: ['先手', '後手'], sideColors: ['#f3d9a4', '#f3d9a4'],
 };
 
