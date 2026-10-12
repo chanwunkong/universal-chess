@@ -63,16 +63,16 @@ const chess: VariantDef = {
 function xiangqiPieces(prefix: string, L: Record<string, [string, string]>): Record<string, PieceDef> {
   const p = (k: string) => prefix + k;
   return {
-    [p('k')]: piece(p('k'), L.k[0] + '/' + L.k[1], L.k, 'disc', [step(ORTH, { confine: 'palace' })], { royal: true }),
-    [p('a')]: piece(p('a'), L.a[0] + '/' + L.a[1], L.a, 'disc', [step(DIAG, { confine: 'palace' })], { value: 2 }),
-    [p('e')]: piece(p('e'), L.e[0] + '/' + L.e[1], L.e, 'disc', [step(ELEPHANT_XQ, { lame: true, confine: 'ownHalf' })], { value: 2 }),
-    [p('h')]: piece(p('h'), L.h[0] + '/' + L.h[1], L.h, 'disc', [step(KNIGHT, { lame: true })], { value: 4 }),
-    [p('r')]: piece(p('r'), L.r[0] + '/' + L.r[1], L.r, 'disc', [slide(ORTH)], { value: 9 }),
-    [p('c')]: piece(p('c'), L.c[0] + '/' + L.c[1], L.c, 'disc', [slide(ORTH, { hop: 'cannon' })], { value: 4.5 }),
+    [p('k')]: piece(p('k'), L.k[0] + '/' + L.k[1], L.k, 'disc', [step(ORTH, { confine: 'palace' })], { royal: true, xqRole: 'king' }),
+    [p('a')]: piece(p('a'), L.a[0] + '/' + L.a[1], L.a, 'disc', [step(DIAG, { confine: 'palace' })], { value: 2, xqRole: 'advisor' }),
+    [p('e')]: piece(p('e'), L.e[0] + '/' + L.e[1], L.e, 'disc', [step(ELEPHANT_XQ, { lame: true, confine: 'ownHalf' })], { value: 2, xqRole: 'elephant' }),
+    [p('h')]: piece(p('h'), L.h[0] + '/' + L.h[1], L.h, 'disc', [step(KNIGHT, { lame: true })], { value: 4, xqRole: 'horse' }),
+    [p('r')]: piece(p('r'), L.r[0] + '/' + L.r[1], L.r, 'disc', [slide(ORTH)], { value: 9, xqRole: 'rook' }),
+    [p('c')]: piece(p('c'), L.c[0] + '/' + L.c[1], L.c, 'disc', [slide(ORTH, { hop: 'cannon' })], { value: 4.5, xqRole: 'cannon' }),
     [p('p')]: piece(p('p'), L.p[0] + '/' + L.p[1], L.p, 'disc', [
       step([[0, 1]]),
       step([[1, 0], [-1, 0]], { when: 'enemyHalf' }),
-    ], { value: 1 }),
+    ], { value: 1, xqRole: 'soldier' }),
   };
 }
 const XQ_PALACES = [{ x: 3, y: 0, w: 3, h: 3, side: 0 as Side }, { x: 3, y: 7, w: 3, h: 3, side: 1 as Side }];
@@ -84,10 +84,12 @@ function xiangqiSetup(pf: string) {
     3: [k('p'), null, k('p'), null, k('p'), null, k('p'), null, k('p')],
   }, 9, 10);
 }
-const XQ_RULES = { win: 'checkmate', stalemate: 'loss', promotionZone: 0, flyingGeneral: true, repetition: 3, moveLimit: 120 } as const;
+// 亞洲象棋聯合會（AXF）規則，依 Fairy-Stockfish xiangqi_variant 實作：困斃判負、王不見王、
+// 長將與長捉於第三次重複時判負、其餘重複和棋、50 回合無吃子和棋（一方將軍超過 10 次的部分不計）
+const XQ_RULES = { win: 'checkmate', stalemate: 'loss', promotionZone: 0, flyingGeneral: true, chasing: 'axf', repetition: 3, moveLimit: 100 } as const;
 
 const xiangqi: VariantDef = {
-  id: 'xiangqi', name: '中國象棋', description: '楚河漢界、九宮、蹩馬腿、塞象眼、炮隔子吃、將帥不能照面。',
+  id: 'xiangqi', name: '中國象棋', description: '楚河漢界、九宮、蹩馬腿、塞象眼、炮隔子吃、將帥不能照面。依亞洲象棋聯合會規則：長將、長捉判負，困斃判負。',
   board: { width: 9, height: 10, cell: 'intersection', river: true, palaces: XQ_PALACES },
   pieces: xiangqiPieces('x.', {
     k: ['帥', '將'], a: ['仕', '士'], e: ['相', '象'], h: ['傌', '馬'], r: ['俥', '車'], c: ['炮', '砲'], p: ['兵', '卒'],
@@ -98,7 +100,7 @@ const xiangqi: VariantDef = {
 };
 
 const vietnamese: VariantDef = {
-  id: 'cotuong', name: '越南象棋', description: 'Cờ tướng：規則與中國象棋相同，使用越南語棋子名稱。',
+  id: 'cotuong', name: '越南象棋', description: 'Cờ tướng：走法與中國象棋相同，使用越南語棋子名稱。越南象棋聯合會的條文未規定重複幾次才裁決，因此長將、長捉暫依亞洲象棋聯合會（AXF）規則裁決。',
   board: { width: 9, height: 10, cell: 'intersection', river: true, palaces: XQ_PALACES },
   pieces: xiangqiPieces('v.', {
     k: ['Tướng', 'Tướng'], a: ['Sĩ', 'Sĩ'], e: ['Tượng', 'Tượng'], h: ['Mã', 'Mã'], r: ['Xe', 'Xe'], c: ['Pháo', 'Pháo'], p: ['Tốt', 'Tốt'],
@@ -149,15 +151,19 @@ const shogi: VariantDef = {
 // ---------- 韓國象棋 ----------
 const janggiPieces: Record<string, PieceDef> = {
   'j.k': piece('j.k', '將', ['楚', '漢'], 'octagon', [step(ORTH, { confine: 'palace' }), step(DIAG, { confine: 'palace', palaceDiag: true })], { royal: true }),
-  'j.a': piece('j.a', '士', '士', 'octagon', [step(ORTH, { confine: 'palace' }), step(DIAG, { confine: 'palace', palaceDiag: true })], { value: 3 }),
-  'j.e': piece('j.e', '象', '象', 'octagon', [step(ELEPHANT_JG, { lame: true })], { value: 3 }),
-  'j.h': piece('j.h', '馬', '馬', 'octagon', [step(KNIGHT, { lame: true })], { value: 5 }),
-  'j.r': piece('j.r', '車', '車', 'octagon', [slide(ORTH), slide(DIAG, { palaceDiag: true })], { value: 13 }),
-  'j.c': piece('j.c', '包', '包', 'octagon', [slide(ORTH, { hop: 'janggi' }), slide(DIAG, { hop: 'janggi', palaceDiag: true })], { value: 7 }),
-  'j.p': piece('j.p', '卒/兵', ['卒', '兵'], 'octagon', [step([[0, 1], [1, 0], [-1, 0]]), step([[1, 1], [-1, 1]], { palaceDiag: true })], { value: 2 }),
+  'j.a': piece('j.a', '士', '士', 'octagon', [step(ORTH, { confine: 'palace' }), step(DIAG, { confine: 'palace', palaceDiag: true })], { value: 3, points: 3 }),
+  'j.e': piece('j.e', '象', '象', 'octagon', [step(ELEPHANT_JG, { lame: true })], { value: 3, points: 3 }),
+  'j.h': piece('j.h', '馬', '馬', 'octagon', [step(KNIGHT, { lame: true })], { value: 5, points: 5 }),
+  'j.r': piece('j.r', '車', '車', 'octagon', [slide(ORTH), slide(DIAG, { palaceDiag: true })], { value: 13, points: 13 }),
+  'j.c': piece('j.c', '包', '包', 'octagon', [slide(ORTH, { hop: 'janggi' }), slide(DIAG, { hop: 'janggi', palaceDiag: true })], { value: 7, points: 7 }),
+  'j.p': piece('j.p', '卒/兵', ['卒', '兵'], 'octagon', [step([[0, 1], [1, 0], [-1, 0]]), step([[1, 1], [-1, 1]], { palaceDiag: true })], { value: 2, points: 2 }),
 };
+/** 韓國象棋底線 b、c、g、h 四個位置的馬象擺法 */
+function janggiRow(types: string[]) {
+  return [1, 2, 6, 7].map((x, i) => ({ x, y: 0, type: types[i] }));
+}
 const janggi: VariantDef = {
-  id: 'janggi', name: '韓國象棋', description: '장기：沒有河界，九宮內可走斜線，包必須隔子移動且不能吃包，可以停著。',
+  id: 'janggi', name: '韓國象棋', description: '장기（正式比賽規則）：開局由漢、楚依序選擇馬象擺法，楚先走；九宮內可走斜線，包須隔子且不能跳過或吃包；可以停著；照面（빅장）後停著、重複局面、50 回合無吃子、雙方連續停著皆以計分判定（漢加 1.5 分）；連續將軍造成重複則將軍方負。',
   board: { width: 9, height: 10, cell: 'intersection', palaces: XQ_PALACES },
   pieces: janggiPieces,
   setup: mirrorSetup({
@@ -166,14 +172,27 @@ const janggi: VariantDef = {
     2: [null, 'j.c', null, null, null, null, null, 'j.c', null],
     3: ['j.p', null, 'j.p', null, 'j.p', null, 'j.p', null, 'j.p'],
   }, 9, 10),
-  rules: { win: 'checkmate', stalemate: 'loss', promotionZone: 0, allowPass: true, repetition: 3, moveLimit: 0 },
+  // 規則依據：PyChess 韓國象棋說明與 Fairy-Stockfish janggi_variant（正式比賽規則）
+  setupChoice: {
+    order: [1, 0], // 漢方先選，楚方後選
+    options: [
+      { name: '內象（마상상마）', placements: janggiRow(['j.h', 'j.e', 'j.e', 'j.h']) },
+      { name: '外象（상마마상）', placements: janggiRow(['j.e', 'j.h', 'j.h', 'j.e']) },
+      { name: '左內右外（마상마상）', placements: janggiRow(['j.h', 'j.e', 'j.h', 'j.e']) },
+      { name: '左外右內（상마상마）', placements: janggiRow(['j.e', 'j.h', 'j.e', 'j.h']) },
+    ],
+  },
+  rules: {
+    win: 'checkmate', stalemate: 'loss', promotionZone: 0, allowPass: true, bikjang: true,
+    repetition: 3, perpetualCheckLoses: true, moveLimit: 100, pointsAdjudication: { bonus: [0, 1.5] },
+  },
   sideNames: ['楚（藍）', '漢（紅）'], sideColors: ['#1f5fa8', '#c0392b'],
 };
 
 // ---------- 蒙古象棋 Shatar ----------
 const shatarPieces: Record<string, PieceDef> = {
   'm.k': piece('m.k', 'Noyon 諾顏', '♚', 'glyph', [step(ALL8)], { royal: true }),
-  'm.q': piece('m.q', 'Bers 獅/犬', '♛', 'glyph', [slide(ALL8)], { value: 9 }),
+  'm.q': piece('m.q', 'Bers', '♛', 'glyph', [slide(ORTH), step(DIAG)], { value: 6 }),
   'm.b': piece('m.b', 'Temee 駱駝', '♝', 'glyph', [slide(DIAG)], { value: 3.2 }),
   'm.n': piece('m.n', 'Mori 馬', '♞', 'glyph', [step(KNIGHT)], { value: 3 }),
   'm.r': piece('m.r', 'Tereg 車', '♜', 'glyph', [slide(ORTH)], { value: 5 }),
@@ -183,11 +202,19 @@ const shatarPieces: Record<string, PieceDef> = {
   ], { value: 1, pawn: true, promotesTo: ['m.q'], promoForced: true }),
 };
 const shatar: VariantDef = {
-  id: 'shatar', name: '蒙古象棋', description: 'Shatar：沒有入堡與吃過路兵，兵只能走一步，兵升變為 Bers，不能用馬將死。',
+  id: 'shatar', name: '蒙古象棋', description: 'Shatar（傳統規則）：開局雙方 d 兵已對頂；Bers 走直線或斜一格；兵只走一格，升變為 Bers；沒有入堡；不能只用馬將死，將死前的連續將軍至少要有一次由車、馬或 Bers 將軍，否則和棋（Niol）；只剩王為和棋（Robado）。',
   board: { width: 8, height: 8, cell: 'square', checkered: true },
   pieces: shatarPieces,
-  setup: mirrorSetup({ 0: ['m.r', 'm.n', 'm.b', 'm.q', 'm.k', 'm.b', 'm.n', 'm.r'], 1: Array(8).fill('m.p') }, 8, 8),
-  rules: { win: 'checkmate', stalemate: 'draw', promotionZone: 1, noMateBy: ['m.n'], repetition: 3, moveLimit: 100 },
+  // 規則依據：Wikipedia「Shatar」與 Fairy-Stockfish shatar_variant（PyChess 採用的傳統規則）
+  setup: mirrorSetup({
+    0: ['m.r', 'm.n', 'm.b', 'm.q', 'm.k', 'm.b', 'm.n', 'm.r'],
+    1: ['m.p', 'm.p', 'm.p', null, 'm.p', 'm.p', 'm.p', 'm.p'],
+    3: [null, null, null, 'm.p', null, null, null, null],
+  }, 8, 8),
+  rules: {
+    win: 'checkmate', stalemate: 'draw', promotionZone: 1, noMateBy: ['m.n'], mateRequiresCheckBy: ['m.n', 'm.r', 'm.q'],
+    bareKingDraw: true, repetition: 3, moveLimit: 100,
+  },
   sideNames: ['白方', '黑方'], sideColors: ['#f4f1e8', '#7a3b1d'],
 };
 
@@ -255,7 +282,8 @@ const shatranj: VariantDef = {
   id: 'shatranj', name: '波斯象棋', description: 'Shatranj：西洋棋的祖先。宰相只能斜走一格，象斜跳兩格（可越子）。困斃對方即勝；吃到對方只剩王即勝，但對方若能立刻也把你吃到只剩王則和棋。',
   board: { width: 8, height: 8, cell: 'square', checkered: true },
   pieces: shatranjPieces,
-  setup: mirrorSetup({ 0: ['p.r', 'p.n', 'p.a', 'p.f', 'p.k', 'p.a', 'p.n', 'p.r'], 1: Array(8).fill('p.p') }, 8, 8),
+  // 王的左右位置在歷史上並不固定（Wikipedia），此處採用與 PyChess／Fairy-Stockfish 相同的擺法：王在 d 列、雙王同列相對
+  setup: mirrorSetup({ 0: ['p.r', 'p.n', 'p.a', 'p.k', 'p.f', 'p.a', 'p.n', 'p.r'], 1: Array(8).fill('p.p') }, 8, 8),
   // 規則依據：Wikipedia「Shatranj」與 Fairy-Stockfish shatranj_variant
   rules: { win: 'checkmate', stalemate: 'loss', promotionZone: 1, bareKing: true, repetition: 3, moveLimit: 0 },
   sideNames: ['白方', '黑方'], sideColors: ['#f4f1e8', '#1f4f3a'],

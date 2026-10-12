@@ -4,7 +4,8 @@ import { PRESETS } from '../variants/presets';
 import type { GameState } from './types';
 
 function perft(e: Engine, st: GameState, d: number): number {
-  const ms = e.legalMoves(st);
+  // 雙方連續停著即終局（與 Fairy-Stockfish 的 is_immediate_game_end 一致）
+  const ms = st.passes >= 2 ? [] : e.legalMoves(st);
   if (d === 1) return ms.length;
   let n = 0;
   for (const m of ms) n += perft(e, e.makeMove(st, m), d - 1);
@@ -289,4 +290,22 @@ describe('FIDE and JSA rules', () => {
     st.board[at(e, 'a7')] = null; st.board[at(e, 'b7')] = null; st.board[at(e, 'c8')] = null; st.board[at(e, 'd8')] = null;
     expect(e.impasseDeclaration(st).result).toMatchObject({ kind: 'win', winner: 1 }); // 不足 10 枚：宣言方負
   });
+});
+
+describe('perft vs Fairy-Stockfish', () => {
+  // 參考值由 Fairy-Stockfish（largeboards）以 go perft 計算
+  const cases: [string, number[], (number | null)[]?][] = [
+    ['shatar', [20, 400, 8426]],
+    ['janggi', [32, 1024, 33000], [0, 0]],
+    ['makruk', [23, 529, 12012]],
+    ['ouk', [25, 625, 15031]],
+    ['shatranj', [16, 256, 4176]],
+  ];
+  for (const [id, expected, choices] of cases) {
+    it(id, () => {
+      const e = get(id);
+      const st = e.initialState(choices);
+      expect(expected.map((_, i) => perft(e, st, i + 1))).toEqual(expected);
+    });
+  }
 });

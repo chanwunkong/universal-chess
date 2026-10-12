@@ -60,6 +60,8 @@ export interface PieceDef {
   points?: number;
   /** 判斷子力不足死局用（FIDE 5.2.2）：輕子種類 */
   minor?: 'knight' | 'bishop';
+  /** 中國象棋長捉判定（AXF）中的兵種 */
+  xqRole?: 'king' | 'advisor' | 'elephant' | 'horse' | 'rook' | 'cannon' | 'soldier';
   /** 泰國／柬埔寨數步規則中的身分 */
   countAs?: 'rook' | 'bishop' | 'knight' | 'queen';
 }
@@ -96,8 +98,16 @@ export interface RulesDef {
   bareKing?: boolean;
   /** 數步規則（棋盤數／棋子數） */
   counting?: 'makruk' | 'cambodian';
-  /** 以下列棋子將死無效 */
+  /** 將死時，若所有將軍的棋子都屬於這些類型，該步不合法（蒙古象棋：不能用馬將死） */
   noMateBy?: string[];
+  /** 將死前的連續將軍中，至少要有一次由這些棋子將軍，否則和棋（蒙古象棋 shak 規則） */
+  mateRequiresCheckBy?: string[];
+  /** 任一方只剩王即和棋（蒙古象棋 Robado） */
+  bareKingDraw?: boolean;
+  /** 照面（빅장）：雙王同一直線無子相隔時，對方須破解或停著；停著則終局計分 */
+  bikjang?: boolean;
+  /** 以計分判定原本會和棋的結局（韓國象棋）；bonus 為雙方加分 */
+  pointsAdjudication?: { bonus: [number, number] };
   /** 同一局面出現 N 次自動和棋，0 = 關閉 */
   repetition: number;
   /** 連續 N 個半回合無吃子（且無兵移動）自動和棋，0 = 關閉 */
@@ -112,6 +122,8 @@ export interface RulesDef {
   perpetualCheckLoses?: boolean;
   /** 總手數（半回合）達到上限時判和（將棋 500 手持將棋）；若正在連續將軍則等將軍中斷 */
   maxPlies?: number;
+  /** 亞洲象棋聯合會（AXF）長將、長捉規則，移植自 Fairy-Stockfish */
+  chasing?: 'axf';
   /** 日本將棋聯盟的持將棋規則（合意 24 點、入玉宣言 31 點） */
   impasse?: 'jsa';
 }
@@ -123,6 +135,14 @@ export interface Placement {
   y: number;
 }
 
+/** 開局時讓玩家選擇部分棋子的擺法（韓國象棋馬象位置） */
+export interface SetupChoice {
+  /** 選擇順序（例如漢方先選） */
+  order: Side[];
+  /** 每個選項的擺放（以該方視角：x 由左至右、y 由己方底線起算） */
+  options: { name: string; placements: { x: number; y: number; type: string }[] }[];
+}
+
 export interface VariantDef {
   id: string;
   name: string;
@@ -130,6 +150,7 @@ export interface VariantDef {
   board: BoardDef;
   pieces: Record<string, PieceDef>;
   setup: Placement[];
+  setupChoice?: SetupChoice;
   rules: RulesDef;
   sideNames: [string, string];
   sideColors: [string, string];
@@ -166,6 +187,8 @@ export interface GameState {
   passes: number;
   /** 已走的總手數（半回合） */
   ply?: number;
+  /** 產生這個局面的上一步（長捉判定用） */
+  last?: { from: number; to: number; captured: boolean };
   /** 數步：limit / ply 皆以半回合計（對應 Fairy-Stockfish 的 countingLimit / countingPly） */
   count?: { limit: number; ply: number };
   /** 棋盤數：由劣勢方宣告，ply 從 1 起算 */

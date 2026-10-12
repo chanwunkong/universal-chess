@@ -36,15 +36,21 @@ export function GameView({ variant, onBack, onEdit }: Props) {
     return engine.result(st, history);
   }, [engine, st, history, claimed]);
   const [claimPending, setClaimPending] = useState(false);
+  // 開局擺法選擇（韓國象棋）
+  const [choices, setChoices] = useState<(number | null)[]>([null, null]);
+  const sc = variant.setupChoice;
+  const chooser = sc?.order.find(s => choices[s] == null);
+  const choosing = chooser !== undefined;
   const [dialog, setDialog] = useState<{ title: string; lines: string[]; actions: { label: string; primary?: boolean; run: () => void }[] } | null>(null);
   const countInfo = engine.countStatus(st);
   const over = result.kind !== 'ongoing';
-  const aiTurn = !over && players[st.turn] === 'ai';
-  const humanTurn = !over && players[st.turn] === 'human';
+  const aiTurn = !over && !choosing && players[st.turn] === 'ai';
+  const humanTurn = !over && !choosing && players[st.turn] === 'human';
 
   function restart() {
     reqId.current++;
     setHistory([engine.initialState()]);
+    setChoices([null, null]);
     setMoves([]);
     setSelected(null);
     setPromoChoice(null);
@@ -68,6 +74,17 @@ export function GameView({ variant, onBack, onEdit }: Props) {
     setSelected(null);
     setPromoChoice(null);
   }
+
+  function choose(side: Side, idx: number) {
+    const next = [...choices];
+    next[side] = idx;
+    setChoices(next);
+    setHistory([engine.initialState(next)]);
+  }
+  // 電腦選擇擺法
+  useEffect(() => {
+    if (chooser !== undefined && sc && players[chooser] === 'ai') choose(chooser, Math.floor(Math.random() * sc.options.length));
+  }, [chooser, players]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** 不是走棋的動作（宣告數步等）：取代目前局面，可以悔棋 */
   function replaceState(next: GameState) {
@@ -145,7 +162,7 @@ export function GameView({ variant, onBack, onEdit }: Props) {
   }, [selected, legal]);
 
   function onCell(sq: number) {
-    if (over || aiTurn || promoChoice) return;
+    if (over || aiTurn || promoChoice || choosing) return;
     const p = st.board[sq];
     if (selected && targets.has(sq)) {
       const cands = legal.filter(m => !m.pass && m.to === sq &&
@@ -185,7 +202,7 @@ export function GameView({ variant, onBack, onEdit }: Props) {
     );
   };
 
-  const status = result.kind === 'win'
+  const status = choosing ? `等待${variant.sideNames[chooser!]}選擇開局擺法` : result.kind === 'win'
     ? `${variant.sideNames[result.winner]}獲勝（${result.reason}）`
     : result.kind === 'draw' ? `和棋（${result.reason}）`
       : `輪到${variant.sideNames[st.turn]}${result.check ? '・將軍！' : ''}${thinking ? '・AI 思考中…' : ''}${claimPending ? '・請走出要求和棋的那一步' : ''}`;
@@ -338,6 +355,27 @@ export function GameView({ variant, onBack, onEdit }: Props) {
           </ol>
         </section>
       </aside>
+
+      {choosing && sc && players[chooser!] === 'human' && (
+        <div className="modal-bg">
+          <div className="modal sheet">
+            <h3>{variant.sideNames[chooser!]}選擇開局擺法</h3>
+            <p className="muted small">由左至右是從{variant.sideNames[chooser!]}的視角看底線。</p>
+            <div className="setup-options">
+              {sc.options.map((o, i) => (
+                <button key={i} onClick={() => choose(chooser!, i)}>
+                  <span className="setup-icons">
+                    {o.placements.map((p, j) => (
+                      <PieceIcon key={j} def={variant.pieces[p.type]} side={chooser!} colors={variant.sideColors} size={30} />
+                    ))}
+                  </span>
+                  <span>{o.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {dialog && (
         <div className="modal-bg" onClick={() => setDialog(null)}>
