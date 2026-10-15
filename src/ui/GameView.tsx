@@ -15,9 +15,11 @@ interface Props {
   onEdit?: () => void;
   /** 一開始就和電腦對下（電腦執後手、簡單難度） */
   vsAI?: boolean;
+  /** 無盡征途：固定由電腦執後手、不能悔棋或重來；結束後按「繼續」回報結果 */
+  campaign?: { level: Level; onFinish: (r: Result, history: GameState[], moves: Move[]) => void };
 }
 
-export function GameView({ variant, onBack, onEdit, vsAI }: Props) {
+export function GameView({ variant, onBack, onEdit, vsAI, campaign }: Props) {
   const { t, tx, vName, vDesc, side: sideName, pName } = useLang();
   const sn = (s: Side) => sideName(variant, s);
   const both = (s: Side) => ({ zh: variant.sideNames[s], en: variant.sideNamesEn?.[s] ?? variant.sideNames[s] });
@@ -26,8 +28,8 @@ export function GameView({ variant, onBack, onEdit, vsAI }: Props) {
   const [moves, setMoves] = useState<Move[]>([]);
   const [selected, setSelected] = useState<{ sq: number } | { drop: string } | null>(null);
   const [promoChoice, setPromoChoice] = useState<Move[] | null>(null);
-  const [players, setPlayers] = useState<[Player, Player]>(vsAI ? ['human', 'ai'] : ['human', 'human']);
-  const [level, setLevel] = useState<Level>(vsAI ? 'easy' : 'normal');
+  const [players, setPlayers] = useState<[Player, Player]>(vsAI || campaign ? ['human', 'ai'] : ['human', 'human']);
+  const [level, setLevel] = useState<Level>(campaign?.level ?? (vsAI ? 'easy' : 'normal'));
   const [flipped, setFlipped] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [panel, setPanel] = useState<'menu' | 'moves' | null>(null);
@@ -298,7 +300,10 @@ export function GameView({ variant, onBack, onEdit, vsAI }: Props) {
       </div>
 
       <nav className="actionbar">
-        <button onClick={undo} disabled={history.length < 2 && !claimed}><i>↶</i>{t('悔棋', 'Undo')}</button>
+        {campaign && over && (
+          <button className="primary" onClick={() => campaign.onFinish(result, history, moves)}><i>→</i>{t('繼續', 'Continue')}</button>
+        )}
+        {!campaign && <button onClick={undo} disabled={history.length < 2 && !claimed}><i>↶</i>{t('悔棋', 'Undo')}</button>}
         <button onClick={() => setFlipped(f => !f)}><i>⇅</i>{t('翻轉', 'Flip')}</button>
         {passMove && <button onClick={() => play(passMove)} disabled={over || aiTurn}><i>⏸</i>{t('停著', 'Pass')}</button>}
         {humanTurn && engine.canDeclareCount(st, st.turn) && (
@@ -330,8 +335,8 @@ export function GameView({ variant, onBack, onEdit, vsAI }: Props) {
       <aside className={`game-panel ${panel ? 'open' : ''} show-${panel ?? 'none'}`}>
         <div className="sheet-handle mobile-only" onClick={() => setPanel(null)} />
         <section className="panel-menu">
-          <h3>{t('對局設定', 'Game settings')}</h3>
-          <div className="seg-group">
+          {!campaign && <h3>{t('對局設定', 'Game settings')}</h3>}
+          {!campaign && <div className="seg-group">
             {([0, 1] as Side[]).map(s => (
               <div key={s} className="seg-row">
                 <span className="seg-label"><span className="turn-dot" style={{ background: variant.sideColors[s] }} />{sn(s)}</span>
@@ -356,11 +361,11 @@ export function GameView({ variant, onBack, onEdit, vsAI }: Props) {
                 ))}
               </div>
             </div>
-          </div>
-          <div className="btns">
+          </div>}
+          {!campaign && <div className="btns">
             <button onClick={() => { restart(); setPanel(null); }}>{t('重新開始', 'Restart')}</button>
             {onEdit && <button onClick={onEdit}>{t('編輯此變體', 'Edit this variant')}</button>}
-          </div>
+          </div>}
           {vDesc(variant) && <p className="muted small">{vDesc(variant)}</p>}
         </section>
         <section className="panel-moves movelist">

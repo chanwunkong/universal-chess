@@ -6,6 +6,7 @@ import { GameView } from './ui/GameView';
 import { Tutorial } from './ui/Tutorial';
 import { RuleBook } from './ui/RuleBook';
 import { MixSetup } from './ui/MixSetup';
+import { Campaign } from './ui/Campaign';
 import { RULES } from './rules/catalog';
 import { Editor, blankFrom } from './ui/editor/Editor';
 import { BoardView } from './ui/BoardView';
@@ -18,6 +19,7 @@ type Screen =
   | { kind: 'tutorial'; variant: VariantDef; from?: Screen }
   | { kind: 'rules' }
   | { kind: 'mix' }
+  | { kind: 'campaign' }
   | { kind: 'editor'; variant: VariantDef };
 
 function Thumb({ v }: { v: VariantDef }) {
@@ -48,6 +50,8 @@ export default function App() {
       return list;
     });
   }
+
+  if (screen.kind === 'campaign') return <Campaign onBack={() => setScreen({ kind: 'home' })} />;
 
   if (screen.kind === 'mix')
     return <MixSetup onBack={() => setScreen({ kind: 'home' })} onSave={v => store(v)}
@@ -85,6 +89,14 @@ export default function App() {
           <strong>{t('規則圖鑑', 'Rule encyclopedia')}</strong>
           <span className="muted small">{t(`認識各地象棋的 ${RULES.length} 條規則：蹩馬腿、打入、長捉、數步……每條都附出處，很多可以直接試玩。`,
             `Explore ${RULES.length} rules from chess games around the world — each with its source, many playable right away.`)}</span>
+        </span>
+        <span className="feature-arrow">›</span>
+      </button>
+      <button className="feature-card" onClick={() => setScreen({ kind: 'campaign' })}>
+        <span className="feature-icon">⚔️</span>
+        <span className="feature-text">
+          <strong>{t('無盡征途', 'The Long March')}</strong>
+          <span className="muted small">{t('單人模式：奪旗、軍團、最後將死國王。每關之後擴充領地、招募各國棋子。', 'Single player: capture flags, face legions, then checkmate the king. Grow your territory and recruit pieces between battles.')}</span>
         </span>
         <span className="feature-arrow">›</span>
       </button>

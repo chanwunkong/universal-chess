@@ -364,3 +364,17 @@ input[type="color"] { padding: 0; width: 44px; height: 38px; }
 .picker-grid button.selected { background: color-mix(in srgb, var(--accent) 14%, var(--surface)); }
 .eraser { font-size: 1.6rem; line-height: 36px; }
 .army-summary { justify-content: space-between; }
+
+/* 無盡征途 */
+.campaign { display: flex; flex-direction: column; padding-bottom: 8px; }
+.campaign h3 { margin-top: 14px; }
+.campaign.result { padding-top: 40px; text-align: center; align-items: center; }
+.records { display: flex; flex-direction: column; gap: 2px; font-size: 0.88rem; color: var(--muted); }
+.kit { display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 1px; }
+.points { font-weight: 700; color: #e8a317; white-space: nowrap; }
+.shop { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+.shop button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 4px; text-align: center; line-height: 1.2; }
+.shop button.selected { background: color-mix(in srgb, var(--accent) 14%, var(--surface)); }
+.cost { color: #e8a317; font-weight: 700; font-size: 0.85rem; }
+.tile-mini { min-height: 34px; display: flex; align-items: center; }
+.tile-block { fill: var(--accent); }
