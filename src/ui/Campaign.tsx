@@ -11,6 +11,7 @@ import { PRESETS } from '../variants/presets';
 import { BoardView } from './BoardView';
 import { GameView } from './GameView';
 import { PieceIcon } from './PieceGlyph';
+import { PieceInfo, peekTargets } from './PieceInfo';
 
 type Phase = 'menu' | 'prep' | 'battle' | 'result';
 type Outcome = { kind: 'win' | 'draw' | 'loss' | 'clear'; gained?: number; lost?: string[] };
@@ -29,6 +30,7 @@ export function Campaign({ onBack }: { onBack: () => void }) {
   const [start, setStart] = useState('chess');
   const [sel, setSel] = useState<Selection>(null);
   const [anchor, setAnchor] = useState<[number, number] | null>(null);
+  const [scout, setScout] = useState<number | null>(null);
   const records = loadRecords();
 
   const setRun = (r: RunState | null) => { setRunState(r); saveRun(r); };
@@ -133,6 +135,8 @@ export function Campaign({ onBack }: { onBack: () => void }) {
   }
 
   // ---------------- 整備 ----------------
+  const scoutEngine = new Engine(arena.variant);
+  const scoutState = scoutEngine.initialState();
   const yOf = (r: number) => MAX_DEPTH - 1 - r;
   const own = new Set(run.territory.map(([x, r]) => `${x},${r}`));
   const occupied = new Map(run.army.map((p, i) => [`${p.x},${p.r}`, i]));
@@ -215,7 +219,15 @@ export function Campaign({ onBack }: { onBack: () => void }) {
       </p>
 
       <h3>{t('敵情', 'Battlefield')}</h3>
-      <div className="mix-preview"><BoardView variant={arena.variant} board={new Engine(arena.variant).initialState().board} /></div>
+      <p className="muted small">{t('點任何一枚棋子，可以看它能走到哪裡。', 'Tap any piece to see where it can move.')}</p>
+      {scout !== null && scoutState.board[scout] && (
+        <PieceInfo variant={arena.variant} type={scoutState.board[scout]!.type} side={scoutState.board[scout]!.side} onClose={() => setScout(null)} />
+      )}
+      <div className="mix-preview">
+        <BoardView variant={arena.variant} board={scoutState.board}
+          peek={scout !== null && scoutState.board[scout] ? { sq: scout, targets: peekTargets(scoutEngine, scoutState, scout) } : undefined}
+          onCell={sq => setScout(scoutState.board[sq] && scout !== sq ? sq : null)} />
+      </div>
 
       <h3>{t('商店', 'Shop')}</h3>
       <div className="shop">

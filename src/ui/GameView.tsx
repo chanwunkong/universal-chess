@@ -4,6 +4,7 @@ import type { GameState, Move, Result, Side, VariantDef } from '../engine/types'
 import type { AIRequest } from '../engine/ai.worker';
 import { BoardView } from './BoardView';
 import { PieceIcon } from './PieceGlyph';
+import { PieceInfo, peekTargets } from './PieceInfo';
 import { LangToggle, useLang } from '../i18n';
 
 type Player = 'human' | 'ai';
@@ -33,6 +34,7 @@ export function GameView({ variant, onBack, onEdit, vsAI, campaign }: Props) {
   const [flipped, setFlipped] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [panel, setPanel] = useState<'menu' | 'moves' | null>(null);
+  const [peek, setPeek] = useState<number | null>(null);
   const workerRef = useRef<Worker | null>(null);
   const reqId = useRef(0);
 
@@ -171,19 +173,33 @@ export function GameView({ variant, onBack, onEdit, vsAI, campaign }: Props) {
   }, [selected, legal]);
 
   function onCell(sq: number) {
-    if (over || aiTurn || promoChoice || choosing) return;
+    if (promoChoice || choosing) return;
     const p = st.board[sq];
-    if (selected && targets.has(sq)) {
+    const canMove = !over && !aiTurn;
+    if (canMove && selected && targets.has(sq)) {
       const cands = legal.filter(m => !m.pass && m.to === sq &&
         ('sq' in selected ? m.from === selected.sq : m.from < 0 && m.type === selected.drop));
+      setPeek(null);
       if (cands.length === 1) play(cands[0]);
       else setPromoChoice(cands);
       return;
     }
-    if (p && p.side === st.turn) setSelected('sq' in (selected ?? {}) && (selected as { sq: number }).sq === sq ? null : { sq });
-    else setSelected(null);
+    if (p && canMove && p.side === st.turn) {
+      setPeek(null);
+      setSelected('sq' in (selected ?? {}) && (selected as { sq: number }).sq === sq ? null : { sq });
+    } else if (p) {
+      // 查看對方（或不能走時任何一方）的棋子下一步能去哪裡
+      setSelected(null);
+      setPeek(peek === sq ? null : sq);
+    } else {
+      setSelected(null);
+      setPeek(null);
+    }
   }
 
+  const peekInfo = useMemo(() => (peek !== null && st.board[peek] ? { sq: peek, targets: peekTargets(engine, st, peek) } : undefined), [engine, st, peek]);
+  const infoSq = peekInfo?.sq ?? (selected && 'sq' in selected ? selected.sq : null);
+  const infoPiece = infoSq !== null ? st.board[infoSq] : null;
   const last = moves[moves.length - 1];
   const checkSqs = result.kind === 'ongoing' && result.check ? engine.royals(st, st.turn)
     : result.kind === 'win' && result.reason.zh === '將死' ? engine.royals(st, st.turn) : [];
@@ -282,6 +298,9 @@ export function GameView({ variant, onBack, onEdit, vsAI, campaign }: Props) {
         <span className="status-text">{status}</span>
         {lastText && <span className="last-move">{lastText}</span>}
       </div>
+      {infoPiece && (
+        <PieceInfo variant={variant} type={infoPiece.type} side={infoPiece.side} onClose={() => { setPeek(null); setSelected(null); }} />
+      )}
       {countInfo && !over && (
         <div className="count-bar">
           {countInfo.kind === 'board' ? t('棋盤數', "Board's honour") : t('棋子數', "Pieces' honour")}・
@@ -295,7 +314,7 @@ export function GameView({ variant, onBack, onEdit, vsAI, campaign }: Props) {
         <BoardView variant={variant} board={st.board} flipped={flipped}
           selected={selected && 'sq' in selected ? selected.sq : undefined}
           targets={targets} lastMove={last && !last.pass ? [last.from, last.to] : undefined}
-          checkSqs={checkSqs} onCell={onCell} />
+          checkSqs={checkSqs} peek={peekInfo} onCell={onCell} />
         {hand((1 - topSide) as Side)}
       </div>
 

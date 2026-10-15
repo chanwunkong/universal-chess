@@ -129,6 +129,14 @@ input[type="color"] { padding: 0; width: 44px; height: 38px; }
 .hl-last { fill: var(--last); }
 .hl-check { fill: var(--check); }
 .hl-hint { fill: rgba(60, 170, 90, 0.45); }
+.hl-peek { fill: rgba(230, 126, 34, 0.35); }
+.mark-peek { fill: rgba(214, 102, 18, 0.75); pointer-events: none; }
+.mark-peek-cap { fill: none; stroke: rgba(214, 102, 18, 0.8); stroke-width: 5; stroke-dasharray: 8 5; pointer-events: none; }
+.piece-info { display: flex; align-items: flex-start; gap: 8px; padding: 6px 10px; margin: 0 0 4px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); }
+.piece-info .pi-text { flex: 1; min-width: 0; }
+.piece-info strong { font-size: 0.95rem; }
+.piece-info ul { margin: 2px 0 0; padding-left: 1.1em; font-size: 0.82rem; color: var(--muted); }
+.piece-info .pi-close { min-height: 30px; min-width: 30px; padding: 0; border: none; background: transparent; font-size: 1.1rem; color: var(--muted); }
 .hl-zone { fill: rgba(46, 140, 220, 0.12); }
 .star { fill: #e8a317; stroke: #8a5a00; stroke-width: 1.5; paint-order: stroke; pointer-events: none; }
 .mark-move { fill: var(--mark); pointer-events: none; }

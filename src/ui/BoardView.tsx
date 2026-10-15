@@ -18,10 +18,12 @@ interface Props {
   hint?: number[];
   /** 可以擺放的區域（淡色標示） */
   camp?: number[];
+  /** 查看對方棋子：它下一步可以走到的格子 */
+  peek?: { sq: number; targets: Map<number, 'move' | 'capture'> };
   onCell?: (sq: number) => void;
 }
 
-export function BoardView({ variant, board, flipped, selected, targets, lastMove, checkSqs, stars, hint, camp, onCell }: Props) {
+export function BoardView({ variant, board, flipped, selected, targets, lastMove, checkSqs, stars, hint, camp, peek, onCell }: Props) {
   const { width: W, height: H, cell, checkered, river, palaces = [] } = variant.board;
   const zone = variant.rules.promotionZone;
   const isVoid = new Set((variant.board.voids ?? []).map(([x, y]) => y * W + x));
@@ -101,6 +103,7 @@ export function BoardView({ variant, board, flipped, selected, targets, lastMove
   camp?.forEach((sq, i) => hl(sq, 'hl-zone', `camp${i}`));
   if (lastMove) { if (lastMove[0] >= 0) hl(lastMove[0], 'hl-last', 'l0'); hl(lastMove[1], 'hl-last', 'l1'); }
   if (selected !== undefined && selected >= 0) hl(selected, 'hl-sel', 'sel');
+  if (peek) hl(peek.sq, 'hl-peek', 'peek');
   checkSqs?.forEach((sq, i) => hl(sq, 'hl-check', `chk${i}`));
   hint?.forEach((sq, i) => hl(sq, 'hl-hint', `hint${i}`));
   stars?.forEach(sq => {
@@ -124,6 +127,13 @@ export function BoardView({ variant, board, flipped, selected, targets, lastMove
     marks.push(kind === 'capture'
       ? <circle key={`t${sq}`} cx={cx(x)} cy={cy(y)} r={S * 0.46} className="mark-cap" />
       : <circle key={`t${sq}`} cx={cx(x)} cy={cy(y)} r={S * 0.13} className="mark-move" />);
+  });
+
+  peek?.targets.forEach((kind, sq) => {
+    const [x, y] = sqXY(sq);
+    marks.push(kind === 'capture'
+      ? <circle key={`p${sq}`} cx={cx(x)} cy={cy(y)} r={S * 0.46} className="mark-peek-cap" />
+      : <circle key={`p${sq}`} cx={cx(x)} cy={cy(y)} r={S * 0.13} className="mark-peek" />);
   });
 
   const hits: ReactNode[] = [];

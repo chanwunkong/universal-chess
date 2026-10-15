@@ -98,7 +98,10 @@ export function describeRule(r: MoveRule): Text {
 export function describePiece(def: PieceDef, v: VariantDef): Text[] {
   const name = (id: string) => L(v.pieces[id]?.name ?? id, v.pieces[id]?.nameEn ?? v.pieces[id]?.name ?? id);
   const lines = def.moves.map(describeRule);
-  if (def.royal) lines.unshift(L('王：被將死就輸了', 'Royal: if it is checkmated, you lose'));
+  if (!def.moves.length) lines.unshift(L('不能移動', 'It cannot move'));
+  if (def.royal) lines.unshift(v.rules.win === 'captureRoyal'
+    ? L('被吃掉就輸了', 'If it is captured, you lose')
+    : L('王：被將死就輸了', 'Royal: if it is checkmated, you lose'));
   if (def.promotesTo?.length) {
     const ns = def.promotesTo.map(name);
     lines.push(L(`可以升變為 ${ns.map(n => n.zh).join('、')}`, `can promote to ${ns.map(n => n.en).join(', ')}`));
