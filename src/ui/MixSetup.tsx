@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
-import { Engine } from '../engine/engine';
 import type { RulesDef, Side, VariantDef } from '../engine/types';
 import { LangToggle, useLang } from '../i18n';
-import { ARMY_SOURCES, BOARD_SOURCES, buildMix, checkMix, placeArmy } from '../mix/build';
+import {
+  ARMY_SOURCES, BOARD_SOURCES, PIECE_LIBRARY, armyFromBase, boardOf, buildMix, campDepth, checkMix, effectiveArmies,
+  rankToY, yToRank, type MixArmy, type MixConfig,
+} from '../mix/build';
 import { RULES } from '../rules/catalog';
 import { PRESETS } from '../variants/presets';
 import { BoardView } from './BoardView';
@@ -15,39 +17,135 @@ interface Props {
 }
 
 const preset = (id: string) => PRESETS.find(v => v.id === id)!;
+type Mode = 'replace' | 'free';
+
+/** 棋子庫選擇器：先選棋種，再選棋子 */
+function PiecePicker({ side, value, onPick, eraser }: { side: Side; value?: string | null; onPick: (t: string | null) => void; eraser?: boolean }) {
+  const { t, vName, pName } = useLang();
+  const [group, setGroup] = useState(() => (value && PIECE_LIBRARY[value] ? PIECE_LIBRARY[value].from.id : PRESETS[0].id));
+  const v = preset(group);
+  return (
+    <div className="picker">
+      <div className="cat-chips">
+        {PRESETS.map(p => <button key={p.id} className={group === p.id ? 'on' : ''} onClick={() => setGroup(p.id)}>{vName(p)}</button>)}
+      </div>
+      <div className="picker-grid">
+        {eraser && (
+          <button className={value === null ? 'selected' : ''} onClick={() => onPick(null)} title={t('橡皮擦', 'Eraser')}>
+            <span className="eraser">🧽</span><span className="small">{t('移除', 'Remove')}</span>
+          </button>
+        )}
+        {Object.values(v.pieces).map(p => (
+          <button key={p.id} className={value === p.id ? 'selected' : ''} onClick={() => onPick(p.id)}>
+            <PieceIcon def={p} side={side} colors={v.sideColors} size={36} />
+            <span className="small">{pName(p)}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export function MixSetup({ onBack, onPlay, onSave }: Props) {
-  const { t, tx, vName } = useLang();
+  const { t, tx, vName, pName } = useLang();
   const [board, setBoard] = useState('xiangqi');
-  const [armies, setArmies] = useState<[string, string]>(['chess', 'xiangqi']);
+  const [armies, setArmies] = useState<[MixArmy, MixArmy]>(() => [
+    armyFromBase('chess', 0, boardOf('xiangqi')) as MixArmy, armyFromBase('xiangqi', 1, boardOf('xiangqi')) as MixArmy]);
+  const [mirror, setMirror] = useState(false);
   const [rules, setRules] = useState<RulesDef>(() => ({ ...preset('chess').rules }));
   const [ruleFrom, setRuleFrom] = useState('chess');
+  const [editSide, setEditSide] = useState<Side>(0);
+  const [mode, setMode] = useState<Mode>('replace');
+  const [brush, setBrush] = useState<string | null>('c.n');
+  const [replacing, setReplacing] = useState<{ x: number; rank: number } | null>(null);
   const [saved, setSaved] = useState(false);
 
-  const cfg = { board, armies, rules };
-  const { errors, warnings } = useMemo(() => checkMix(cfg), [board, armies, rules]); // eslint-disable-line react-hooks/exhaustive-deps
-  const variant = useMemo(() => buildMix(cfg), [board, armies, rules]); // eslint-disable-line react-hooks/exhaustive-deps
-  const startBoard = useMemo(() => (variant ? new Engine(variant).initialState().board : null), [variant]);
+  const B = boardOf(board);
+  const cfg: MixConfig = { board, armies, mirror, rules };
+  const { errors, warnings } = useMemo(() => checkMix(cfg), [board, armies, mirror, rules]); // eslint-disable-line react-hooks/exhaustive-deps
+  const variant = useMemo(() => buildMix(cfg), [board, armies, mirror, rules]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shown = effectiveArmies(cfg);
+  const side: Side = mirror ? 0 : editSide;
 
-  const upd = (patch: Partial<RulesDef>) => { setRules(r => ({ ...r, ...patch })); setSaved(false); };
+  // 預覽用的棋盤：直接由軍隊擺放產生（即使有錯誤也顯示）
+  const previewBoard = useMemo(() => {
+    const b: VariantDef['setup'] = [];
+    shown.forEach((a, s) => a.pieces.forEach(p => b.push({ type: p.type, side: s as Side, x: p.x, y: rankToY(p.rank, s as Side, B) })));
+    const arr = new Array(B.width * B.height).fill(null);
+    for (const p of b) if (p.x >= 0 && p.x < B.width && p.y >= 0 && p.y < B.height) arr[p.y * B.width + p.x] = { type: p.type, side: p.side };
+    return arr;
+  }, [shown, B]);
+  const previewVariant: VariantDef = variant ?? {
+    ...preset(board), pieces: Object.fromEntries(Object.entries(PIECE_LIBRARY).map(([k, v]) => [k, v.def])),
+  };
+  const zone = useMemo(() => {
+    const z: number[] = [];
+    for (let r = 0; r < campDepth(B); r++) for (let x = 0; x < B.width; x++) z.push(rankToY(r, side, B) * B.width + x);
+    return z;
+  }, [B, side]);
+
+  const touch = () => setSaved(false);
+  const upd = (patch: Partial<RulesDef>) => { setRules(r => ({ ...r, ...patch })); touch(); };
   const card = (id: string) => RULES.find(r => r.id === id)!;
-  const fits = (armyId: string, side: Side) => !placeArmy(armyId, side, preset(board).board).problem;
+  const fits = (id: string, s: Side) => !('problem' in armyFromBase(id, s, B));
+
+  function setArmy(s: Side, a: MixArmy) {
+    setArmies(prev => {
+      const next = [...prev] as [MixArmy, MixArmy];
+      next[s] = a;
+      return next;
+    });
+    touch();
+  }
+
+  function chooseBoard(id: string) {
+    const nb = boardOf(id);
+    setBoard(id);
+    // 換棋盤時，雙方回到各自底軍隊的擺法；放不下就換成西洋棋軍
+    const pick = (s: Side) => {
+      const a = armyFromBase(armies[s].base, s, nb);
+      return 'problem' in a ? (armyFromBase('chess', s, nb) as MixArmy) : a;
+    };
+    setArmies([pick(0), pick(1)]);
+    touch();
+  }
+
+  function chooseBase(s: Side, id: string) {
+    const a = armyFromBase(id, s, B);
+    if ('problem' in a) return;
+    setArmy(s, a);
+    if (Object.keys(a.hands).length) setRules(r => ({ ...r, drops: true, mustDrop: true, dropZone: r.dropZone || 3 }));
+  }
 
   function applyRules(id: string) {
     const r = { ...preset(id).rules };
-    // 緬甸軍隊要從手上佈陣
-    if (armies.includes('sittuyin')) Object.assign(r, { drops: true, mustDrop: true, dropZone: r.dropZone || 3 });
+    if (shown.some(a => Object.keys(a.hands).length)) Object.assign(r, { drops: true, mustDrop: true, dropZone: r.dropZone || 3 });
     setRules(r);
     setRuleFrom(id);
-    setSaved(false);
+    touch();
   }
 
-  function chooseArmy(side: Side, id: string) {
-    const next = [...armies] as [string, string];
-    next[side] = id;
-    setArmies(next);
-    setSaved(false);
-    if (id === 'sittuyin') setRules(r => ({ ...r, drops: true, mustDrop: true, dropZone: r.dropZone || 3 }));
+  function onCell(sq: number) {
+    const x = sq % B.width, y = Math.floor(sq / B.width);
+    const rank = yToRank(y, side, B);
+    if (rank >= campDepth(B)) return;
+    const army = armies[side];
+    const here = army.pieces.find(p => p.x === x && p.rank === rank);
+    if (mode === 'replace') {
+      if (here) setReplacing({ x, rank });
+      return;
+    }
+    const rest = army.pieces.filter(p => !(p.x === x && p.rank === rank));
+    if (brush === null || (here && here.type === brush)) setArmy(side, { ...army, pieces: rest });
+    else setArmy(side, { ...army, pieces: [...rest, { type: brush, x, rank }] });
+  }
+
+  function replaceWith(type: string | null) {
+    if (!replacing) return;
+    const army = armies[side];
+    const rest = army.pieces.filter(p => !(p.x === replacing.x && p.rank === replacing.rank));
+    setArmy(side, { ...army, pieces: type ? [...rest, { type, ...replacing }] : rest });
+    setReplacing(null);
   }
 
   const toggle = (on: boolean, f: (b: boolean) => void, cardId: string, extra?: string) => (
@@ -63,7 +161,10 @@ export function MixSetup({ onBack, onPlay, onSave }: Props) {
   );
   const facing = rules.flyingGeneral ? 'flying' : rules.bikjang ? 'bikjang' : 'none';
   const bare = rules.bareKing ? 'loss' : rules.bareKingDraw ? 'draw' : 'none';
-  const fide = !!rules.repetitionClaim;
+  const sideLabel = (s: Side) => (s === 0 ? t('先手', 'First player') : t('後手', 'Second player'));
+  const army = armies[side];
+  const royals = army.pieces.filter(p => PIECE_LIBRARY[p.type]?.def.royal).length;
+  const replacingPiece = replacing && army.pieces.find(p => p.x === replacing.x && p.rank === replacing.rank);
 
   return (
     <div className="mix">
@@ -78,7 +179,7 @@ export function MixSetup({ onBack, onPlay, onSave }: Props) {
         {BOARD_SOURCES.map(id => {
           const v = preset(id);
           return (
-            <button key={id} className={board === id ? 'selected' : ''} onClick={() => { setBoard(id); setSaved(false); }}>
+            <button key={id} className={board === id ? 'selected' : ''} onClick={() => chooseBoard(id)}>
               <strong>{vName(v)}</strong>
               <span className="muted small">{v.board.width}×{v.board.height}{v.board.cell === 'intersection' ? t('・交叉點', ' · points') : ''}{v.board.palaces ? t('・九宮', ' · palaces') : ''}{v.board.river ? t('・河界', ' · river') : ''}</span>
             </button>
@@ -86,26 +187,56 @@ export function MixSetup({ onBack, onPlay, onSave }: Props) {
         })}
       </div>
 
-      {([0, 1] as Side[]).map(s => (
-        <div key={s}>
-          <h3>{s === 0 ? t('2. 先手的軍隊', '2. First player’s army') : t('3. 後手的軍隊', '3. Second player’s army')}</h3>
-          <div className="mix-options">
-            {ARMY_SOURCES.map(id => {
-              const v = preset(id);
-              const ok = fits(id, s);
-              const king = Object.values(v.pieces).find(p => p.royal);
-              return (
-                <button key={id} disabled={!ok} className={armies[s] === id ? 'selected' : ''} onClick={() => chooseArmy(s, id)}>
-                  <PieceIcon def={king} side={s} colors={v.sideColors} size={30} />
-                  <span className="small">{vName(v)}</span>
-                </button>
-              );
-            })}
-          </div>
+      <h3>{t('2. 編隊', '2. Armies')}</h3>
+      <label className="check">
+        <input type="checkbox" checked={mirror} onChange={e => {
+          // 關掉鏡像時，後手從目前鏡像的結果開始各自編
+          if (!e.target.checked) setArmies(effectiveArmies(cfg));
+          setMirror(e.target.checked);
+          setEditSide(0);
+          touch();
+        }} />
+        {t('雙方使用相同的軍隊（鏡像）', 'Both sides use the same army (mirror)')}
+      </label>
+      {!mirror && (
+        <div className="seg mix-seg">
+          {([0, 1] as Side[]).map(s => <button key={s} className={editSide === s ? 'on' : ''} onClick={() => setEditSide(s)}>{t(`編輯${sideLabel(s)}`, `Edit ${sideLabel(s)}`)}</button>)}
         </div>
-      ))}
+      )}
 
-      <h3>{t('4. 規則', '4. Rules')}</h3>
+      <p className="small muted">{t(`${mirror ? '' : sideLabel(side)}以哪支軍隊為底（會重設這一方的擺法）`, `${mirror ? 'Base' : `${sideLabel(side)}: base`} army (resets this side)`)}</p>
+      <div className="mix-options compact">
+        {ARMY_SOURCES.map(id => {
+          const v = preset(id);
+          const king = Object.values(v.pieces).find(p => p.royal);
+          return (
+            <button key={id} disabled={!fits(id, side)} className={army.base === id ? 'selected' : ''} onClick={() => chooseBase(side, id)}>
+              <PieceIcon def={king} side={side} colors={v.sideColors} size={26} />
+              <span className="small">{vName(v)}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="seg mix-seg">
+        <button className={mode === 'replace' ? 'on' : ''} onClick={() => setMode('replace')}>{t('替換棋子', 'Swap pieces')}</button>
+        <button className={mode === 'free' ? 'on' : ''} onClick={() => setMode('free')}>{t('自由擺放', 'Free placement')}</button>
+      </div>
+      <p className="small muted">
+        {mode === 'replace'
+          ? t('點己方的棋子，從棋子庫選一種換上去。', 'Tap one of your pieces and pick a replacement from the library.')
+          : t('從下方選一種棋子，點己方陣地（淡藍色區域）放上去；再點一次同樣的棋子可移除。', 'Pick a piece below, then tap your camp (shaded) to place it; tap the same piece again to remove it.')}
+      </p>
+      <div className="mix-preview">
+        <BoardView variant={previewVariant} board={previewBoard} camp={zone} onCell={onCell} />
+      </div>
+      <div className="row army-summary">
+        <span className="muted small">{t(`${army.pieces.length} 枚棋子・${royals} 個王`, `${army.pieces.length} pieces · ${royals} king(s)`)}</span>
+        <button className="small-btn" onClick={() => chooseBase(side, army.base)}>↺ {t('恢復成底的擺法', 'Reset to base')}</button>
+      </div>
+      {mode === 'free' && <PiecePicker side={side} value={brush} onPick={setBrush} eraser />}
+
+      <h3>{t('3. 規則', '3. Rules')}</h3>
       <div className="row">
         <span>{t('套用整套規則', 'Use the rules of')}</span>
         <select value={ruleFrom} onChange={e => applyRules(e.target.value)}>
@@ -143,7 +274,7 @@ export function MixSetup({ onBack, onPlay, onSave }: Props) {
           {[3, 4, 5].map(n => <option key={n} value={n}>{t(`出現 ${n} 次`, `${n} times`)}</option>)}
         </select>
       </label>
-      {toggle(fide, b => upd({ repetitionClaim: b ? 3 : undefined, moveLimitClaim: b ? 100 : undefined }), 'draw.fide', t('（可要求和棋）', '(claims)'))}
+      {toggle(!!rules.repetitionClaim, b => upd({ repetitionClaim: b ? 3 : undefined, moveLimitClaim: b ? 100 : undefined }), 'draw.fide', t('（可要求和棋）', '(claims)'))}
       {toggle(!!rules.perpetualCheckLoses, b => upd({ perpetualCheckLoses: b || undefined }), 'draw.perpetualCheck')}
       {toggle(rules.chasing === 'axf', b => upd({ chasing: b ? 'axf' : undefined }), 'draw.chase')}
       <label className="row"><span>{t('無吃子回合上限', 'No-capture limit')}</span>
@@ -171,11 +302,6 @@ export function MixSetup({ onBack, onPlay, onSave }: Props) {
         </ul>
       )}
 
-      <h3>{t('5. 預覽', '5. Preview')}</h3>
-      {variant && startBoard ? (
-        <div className="mix-preview"><BoardView variant={variant} board={startBoard} /></div>
-      ) : <p className="muted">{t('這個組合放不下，請換棋盤或軍隊。', 'This combination does not fit; choose another board or army.')}</p>}
-
       <nav className="actionbar">
         <button onClick={() => { if (variant) { onSave(variant); setSaved(true); } }} disabled={!variant || errors.length > 0}>
           <i>💾</i>{saved ? t('已儲存', 'Saved') : t('存成自訂', 'Save')}
@@ -184,6 +310,19 @@ export function MixSetup({ onBack, onPlay, onSave }: Props) {
           <i>▶</i>{t('開始對局', 'Play')}
         </button>
       </nav>
+
+      {replacing && replacingPiece && (
+        <div className="modal-bg" onClick={() => setReplacing(null)}>
+          <div className="modal sheet" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <PieceIcon def={PIECE_LIBRARY[replacingPiece.type]?.def} side={side} colors={PIECE_LIBRARY[replacingPiece.type]?.from.sideColors ?? ['#fff', '#000']} size={36} />
+              <h3>{t(`把「${pName(PIECE_LIBRARY[replacingPiece.type]?.def)}」換成…`, `Replace ${pName(PIECE_LIBRARY[replacingPiece.type]?.def)} with…`)}</h3>
+              <button className="ghost" onClick={() => setReplacing(null)}>{t('取消', 'Cancel')}</button>
+            </div>
+            <PiecePicker side={side} value={replacingPiece.type} onPick={replaceWith} eraser />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

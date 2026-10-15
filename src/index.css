@@ -129,6 +129,7 @@ input[type="color"] { padding: 0; width: 44px; height: 38px; }
 .hl-last { fill: var(--last); }
 .hl-check { fill: var(--check); }
 .hl-hint { fill: rgba(60, 170, 90, 0.45); }
+.hl-zone { fill: rgba(46, 140, 220, 0.12); }
 .star { fill: #e8a317; stroke: #8a5a00; stroke-width: 1.5; paint-order: stroke; pointer-events: none; }
 .mark-move { fill: var(--mark); pointer-events: none; }
 .mark-cap { fill: none; stroke: var(--mark); stroke-width: 5; pointer-events: none; }
@@ -356,3 +357,10 @@ input[type="color"] { padding: 0; width: 44px; height: 38px; }
 .mix-seg button { font-size: 0.85rem; }
 .mix-rule { align-items: flex-start; }
 .mix-preview .board { max-height: 60dvh; }
+.mix-options.compact { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); }
+.picker { margin: 6px 0; }
+.picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; }
+.picker-grid button { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 2px; text-align: center; line-height: 1.2; }
+.picker-grid button.selected { background: color-mix(in srgb, var(--accent) 14%, var(--surface)); }
+.eraser { font-size: 1.6rem; line-height: 36px; }
+.army-summary { justify-content: space-between; }

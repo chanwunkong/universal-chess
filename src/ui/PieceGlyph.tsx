@@ -1,12 +1,24 @@
 import type { PieceDef, Side } from '../engine/types';
 
 /** 太淺的顏色在淺色棋子上看不清，改用深色墨水 */
-export function ink(color: string): string {
+function luminance(color: string): number {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color);
-  if (!m) return color;
+  if (!m) return 0.5;
   const [r, g, b] = [m[1], m[2], m[3]].map(h => parseInt(h, 16) / 255);
-  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  return lum > 0.6 ? '#5a4a32' : color;
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+export function ink(color: string): string {
+  return luminance(color) > 0.6 ? '#5a4a32' : color;
+}
+
+/** 黑白配色（西洋棋式）時，圓形與八角形棋子改成一白一黑，才分得出雙方 */
+function monoScheme(colors: [string, string], side: Side): { fill: string; line: string; text: string } | null {
+  const l0 = luminance(colors[0]), l1 = luminance(colors[1]);
+  if (Math.max(l0, l1) <= 0.6) return null;
+  // 雙方都是淺色（例如將棋配色）時，後手用深色
+  const light = l0 > 0.6 && l1 > 0.6 ? side === 0 : luminance(colors[side]) > 0.6;
+  return light ? { fill: '#fbf8ef', line: '#4a4a4a', text: '#2a2a2a' } : { fill: '#2e2e2e', line: '#d8d8d8', text: '#f4f1e8' };
 }
 
 interface Props {
@@ -55,21 +67,24 @@ export function PieceGlyph({ def, side, colors, r = 26, facingDown }: Props) {
       const k = r * 0.95;
       const a = k * 0.414;
       const pts = [[a, -k], [k, -a], [k, a], [a, k], [-a, k], [-k, a], [-k, -a], [-a, -k]].map(p => p.join(',')).join(' ');
+      const mono = monoScheme(colors, side);
       return (
         <g>
-          <polygon points={pts} fill="#fbf3dd" stroke={ink(color)} strokeWidth={2.5} />
-          {text(ink(color))}
+          <polygon points={pts} fill={mono?.fill ?? '#fbf3dd'} stroke={mono?.line ?? ink(color)} strokeWidth={2.5} />
+          {text(mono?.text ?? ink(color))}
         </g>
       );
     }
-    default:
+    default: {
+      const mono = monoScheme(colors, side);
       return (
         <g>
-          <circle r={r} fill="#f6e3b4" stroke="#8a6a3a" strokeWidth={1.5} />
-          <circle r={r * 0.82} fill="none" stroke={ink(color)} strokeWidth={1.5} />
-          {text(ink(color))}
+          <circle r={r} fill={mono?.fill ?? '#f6e3b4'} stroke={mono?.line ?? '#8a6a3a'} strokeWidth={1.5} />
+          <circle r={r * 0.82} fill="none" stroke={mono?.line ?? ink(color)} strokeWidth={1.5} />
+          {text(mono?.text ?? ink(color))}
         </g>
       );
+    }
   }
 }
 

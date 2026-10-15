@@ -16,10 +16,12 @@ interface Props {
   stars?: number[];
   /** 提示：要強調的格子 */
   hint?: number[];
+  /** 可以擺放的區域（淡色標示） */
+  camp?: number[];
   onCell?: (sq: number) => void;
 }
 
-export function BoardView({ variant, board, flipped, selected, targets, lastMove, checkSqs, stars, hint, onCell }: Props) {
+export function BoardView({ variant, board, flipped, selected, targets, lastMove, checkSqs, stars, hint, camp, onCell }: Props) {
   const { width: W, height: H, cell, checkered, river, palaces = [] } = variant.board;
   const zone = variant.rules.promotionZone;
   const pad = S * 0.45;
@@ -89,6 +91,7 @@ export function BoardView({ variant, board, flipped, selected, targets, lastMove
     const [x, y] = sqXY(sq);
     highlights.push(<rect key={key} x={cx(x) - S / 2} y={cy(y) - S / 2} width={S} height={S} className={cls} rx={cell === 'intersection' ? S / 2 : 0} />);
   };
+  camp?.forEach((sq, i) => hl(sq, 'hl-zone', `camp${i}`));
   if (lastMove) { if (lastMove[0] >= 0) hl(lastMove[0], 'hl-last', 'l0'); hl(lastMove[1], 'hl-last', 'l1'); }
   if (selected !== undefined && selected >= 0) hl(selected, 'hl-sel', 'sel');
   checkSqs?.forEach((sq, i) => hl(sq, 'hl-check', `chk${i}`));
