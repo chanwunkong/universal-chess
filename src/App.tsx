@@ -5,6 +5,7 @@ import { exportVariant, importVariant, loadCustom, saveCustom } from './storage'
 import { GameView } from './ui/GameView';
 import { Tutorial } from './ui/Tutorial';
 import { RuleBook } from './ui/RuleBook';
+import { MixSetup } from './ui/MixSetup';
 import { RULES } from './rules/catalog';
 import { Editor, blankFrom } from './ui/editor/Editor';
 import { BoardView } from './ui/BoardView';
@@ -16,6 +17,7 @@ type Screen =
   | { kind: 'game'; variant: VariantDef; vsAI?: boolean; from?: Screen }
   | { kind: 'tutorial'; variant: VariantDef; from?: Screen }
   | { kind: 'rules' }
+  | { kind: 'mix' }
   | { kind: 'editor'; variant: VariantDef };
 
 function Thumb({ v }: { v: VariantDef }) {
@@ -46,6 +48,10 @@ export default function App() {
       return list;
     });
   }
+
+  if (screen.kind === 'mix')
+    return <MixSetup onBack={() => setScreen({ kind: 'home' })} onSave={v => store(v)}
+      onPlay={v => setScreen({ kind: 'game', variant: v, from: screen })} />;
 
   if (screen.kind === 'rules')
     return <RuleBook onBack={() => setScreen({ kind: 'home' })} onOpenGame={v => setScreen({ kind: 'tutorial', variant: v, from: screen })} />;
@@ -79,6 +85,14 @@ export default function App() {
           <strong>{t('規則圖鑑', 'Rule encyclopedia')}</strong>
           <span className="muted small">{t(`認識各地象棋的 ${RULES.length} 條規則：蹩馬腿、打入、長捉、數步……每條都附出處，很多可以直接試玩。`,
             `Explore ${RULES.length} rules from chess games around the world — each with its source, many playable right away.`)}</span>
+        </span>
+        <span className="feature-arrow">›</span>
+      </button>
+      <button className="feature-card" onClick={() => setScreen({ kind: 'mix' })}>
+        <span className="feature-icon">🧩</span>
+        <span className="feature-text">
+          <strong>{t('自由組合', 'Mix & match')}</strong>
+          <span className="muted small">{t('自選棋盤、雙方軍隊和規則開局，例如西洋棋軍對中國象棋軍。', 'Pick a board, an army for each side and any rules — e.g. a chess army against a xiangqi army.')}</span>
         </span>
         <span className="feature-arrow">›</span>
       </button>

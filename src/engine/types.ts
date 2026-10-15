@@ -47,6 +47,8 @@ export interface PieceDef {
   royal?: boolean;
   value?: number;
   promotesTo?: string[];
+  /** 這枚棋子自己的升變區深度（排）；沒有則用規則的 promotionZone。混合軍隊時各自保留原本的升變區 */
+  promoZone?: number;
   /** 進入升變區時必須升變（西洋棋兵）；否則為可選（將棋） */
   promoForced?: boolean;
   /** 若落點在最後 N 排則必須升變（將棋步兵/香車=1、桂馬=2），同時也限制打入 */
@@ -103,6 +105,8 @@ export interface RulesDef {
   /** 無子可動（未被將軍）時：輪到的一方判負/判勝/和棋 */
   stalemate: 'loss' | 'win' | 'draw';
   promotionZone: number;
+  /** 統一所有棋子的升變區深度（覆蓋棋子各自的設定；自由組合用） */
+  promoZoneOverride?: number;
   drops?: boolean;
   castling?: boolean;
   flyingGeneral?: boolean;
@@ -176,6 +180,8 @@ export interface VariantDef {
   setupChoice?: SetupChoice;
   /** 開局時雙方手上的棋子（緬甸象棋佈陣） */
   initialHands?: Record<string, number>;
+  /** 雙方開局手上的棋子不同時使用（混合軍隊） */
+  initialHandsBySide?: [Record<string, number>, Record<string, number>];
   rules: RulesDef;
   sideNames: [string, string];
   sideNamesEn?: [string, string];

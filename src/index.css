@@ -345,3 +345,14 @@ input[type="color"] { padding: 0; width: 44px; height: 38px; }
 .sources a { color: var(--accent); word-break: break-word; }
 .rule-demo .status, .lesson .status { height: auto; min-height: 40px; padding: 8px 12px; }
 .rule-demo .status-text, .lesson .status-text { white-space: normal; overflow: visible; }
+
+/* 自由組合 */
+.mix { display: flex; flex-direction: column; padding-bottom: 8px; }
+.mix h3 { margin-top: 16px; }
+.mix-options { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 6px; }
+.mix-options button { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; text-align: center; }
+.mix-options button.selected { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
+.mix-seg { margin: 4px 0 10px; }
+.mix-seg button { font-size: 0.85rem; }
+.mix-rule { align-items: flex-start; }
+.mix-preview .board { max-height: 60dvh; }

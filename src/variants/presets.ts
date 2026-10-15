@@ -382,7 +382,11 @@ const PIECE_EN: Record<string, string> = {
 
 export const PRESETS: VariantDef[] = BASE_PRESETS.map(v => {
   const e = VARIANT_EN[v.id];
-  const pieces = Object.fromEntries(Object.entries(v.pieces).map(([id, p]) => [id, { ...p, nameEn: PIECE_EN[id] ?? p.name }]));
+  // 會升變的棋子記住自己棋種的升變區，混合軍隊時才不會互相影響
+  const pieces = Object.fromEntries(Object.entries(v.pieces).map(([id, p]) => [id, {
+    ...p, nameEn: PIECE_EN[id] ?? p.name,
+    ...(p.promotesTo?.length && v.rules.promotionZone ? { promoZone: v.rules.promotionZone } : {}),
+  }]));
   const setupChoice = v.setupChoice && e?.options
     ? { ...v.setupChoice, options: v.setupChoice.options.map((o, i) => ({ ...o, nameEn: e.options![i] })) }
     : v.setupChoice;

@@ -99,7 +99,8 @@ export class Engine {
         board[y * this.W + x] = { type: pl.type, side };
       }
     }
-    const hands: [Record<string, number>, Record<string, number>] = [{ ...this.v.initialHands }, { ...this.v.initialHands }];
+    const ih = this.v.initialHandsBySide ?? [this.v.initialHands, this.v.initialHands];
+    const hands: [Record<string, number>, Record<string, number>] = [{ ...ih[0] }, { ...ih[1] }];
     return { board, turn: 0, hands, ep: -1, halfmoveClock: 0, passes: 0, ply: 0 };
   }
 
@@ -107,8 +108,9 @@ export class Engine {
 
   private pushWithPromo(out: Move[], side: Side, def: PieceDef, m: Move) {
     const promos = def.promotesTo;
-    if (promos && promos.length && this.v.rules.promotionZone > 0 &&
-      (this.inRegion(m.from, side, 'promoZone') || this.inRegion(m.to, side, 'promoZone'))) {
+    const zone = this.v.rules.promoZoneOverride || (def.promoZone ?? this.v.rules.promotionZone);
+    const inZone = (sq: number) => zone > 0 && this.rank(sq, side) >= this.H - zone;
+    if (promos && promos.length && zone > 0 && (inZone(m.from) || inZone(m.to))) {
       const must = def.promoForced ||
         (def.mustPromoteDepth !== undefined && this.H - 1 - this.rank(m.to, side) < def.mustPromoteDepth);
       for (const p of promos) if (this.v.pieces[p]) out.push({ ...m, promo: p });
