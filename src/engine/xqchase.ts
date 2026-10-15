@@ -2,7 +2,9 @@
 // 逐段移植自 Fairy-Stockfish（src/position.cpp：Position::chased()、slider_blockers()、is_optional_game_end() 的 n-fold 段落），
 // PyChess 的中國象棋即以此裁決。函式與變數名稱盡量保留原名以便對照。
 import type { Engine } from './engine';
-import type { GameState, Move, Piece, PieceDef, Result, Side } from './types';
+import type { GameState, Move, Piece, PieceDef, Result, Side, Text } from './types';
+
+const L = (zh: string, en: string): Text => ({ zh, en });
 
 type Role = NonNullable<PieceDef['xqRole']>;
 type Sq = number;
@@ -327,18 +329,18 @@ export class XqChase {
       perpetualThem = perpetualThem && inCheck(n - i);
       if (this.e.hash(P(n - i)) === key && ++cnt + 1 >= nFold) {
         const stm = st.turn, them = (1 - stm) as Side;
-        const names = this.e.v.sideNames;
+        const name = (s: Side) => this.e.side(s);
         if (perpetualThem || perpetualUs) {
-          if (perpetualThem && perpetualUs) return { kind: 'draw', reason: '雙方長將（和棋）' };
+          if (perpetualThem && perpetualUs) return { kind: 'draw', reason: L('雙方長將（和棋）', 'Both sides perpetual check (draw)') };
           const loser = perpetualThem ? them : stm;
-          return { kind: 'win', winner: (1 - loser) as Side, reason: `${names[loser]}長將判負` };
+          return { kind: 'win', winner: (1 - loser) as Side, reason: L(`${name(loser).zh}長將判負`, `${name(loser).en} loses by perpetual check`) };
         }
         if (chaseThem.size || chaseUs.size) {
-          if (chaseThem.size && chaseUs.size) return { kind: 'draw', reason: '雙方長捉（和棋）' };
+          if (chaseThem.size && chaseUs.size) return { kind: 'draw', reason: L('雙方長捉（和棋）', 'Both sides perpetual chase (draw)') };
           const loser = chaseThem.size ? them : stm;
-          return { kind: 'win', winner: (1 - loser) as Side, reason: `${names[loser]}長捉判負` };
+          return { kind: 'win', winner: (1 - loser) as Side, reason: L(`${name(loser).zh}長捉判負`, `${name(loser).en} loses by perpetual chase`) };
         }
-        return { kind: 'draw', reason: `同一局面出現 ${nFold} 次（和棋）` };
+        return { kind: 'draw', reason: L(`同一局面出現 ${nFold} 次（和棋）`, `Position repeated ${nFold} times (draw)`) };
       }
       if (i + 1 <= end) {
         perpetualUs = perpetualUs && inCheck(n - i - 1);

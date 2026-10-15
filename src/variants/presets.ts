@@ -289,9 +289,107 @@ const shatranj: VariantDef = {
   sideNames: ['白方', '黑方'], sideColors: ['#f4f1e8', '#1f4f3a'],
 };
 
-export const PRESETS: VariantDef[] = [chess, xiangqi, vietnamese, shogi, janggi, shatar, makruk, ouk, shatranj];
+// ---------- 緬甸象棋 Sittuyin ----------
+// 規則依據：PyChess 緬甸象棋說明與 Fairy-Stockfish sittuyin_variant
+const SITTUYIN_PROMO: Vec[] = [[0, 7], [1, 6], [2, 5], [3, 4], [4, 4], [5, 5], [6, 6], [7, 7]];
+const sittuyinPieces: Record<string, PieceDef> = {
+  'y.k': piece('y.k', 'Min-gyi 王', '♚', 'glyph', [step(ALL8)], { royal: true }),
+  'y.f': piece('y.f', 'Sit-ke 將軍', '♛', 'glyph', [step(DIAG)], { value: 1.8, countAs: 'queen' }),
+  'y.s': piece('y.s', 'Sin 象', '♝', 'glyph', [step([...DIAG, [0, 1]])], { value: 2.5, countAs: 'bishop' }),
+  'y.n': piece('y.n', 'Myin 馬', '♞', 'glyph', [step(KNIGHT)], { value: 3, countAs: 'knight' }),
+  'y.r': piece('y.r', 'Yahhta 戰車', '♜', 'glyph', [slide(ORTH)], { value: 5, countAs: 'rook', dropRanks: 1 }),
+  'y.p': piece('y.p', 'Ne 兵', '♟', 'glyph', [
+    step([[0, 1]], { mode: 'move' }),
+    step([[1, 1], [-1, 1]], { mode: 'capture' }),
+  ], { value: 1, pawn: true, sittuyin: { to: 'y.f', squares: SITTUYIN_PROMO } }),
+};
+const sittuyin: VariantDef = {
+  id: 'sittuyin', name: '緬甸象棋',
+  description: 'Sittuyin：開局只有兵在棋盤上，雙方從紅方開始輪流把其餘棋子擺進己方前三排（車只能擺在底線）。兵走到對方的對角線後，可在原地或斜一格升變為將軍，但同時只能有一位將軍，且升變不能攻擊或將軍。只剩王時開始數步（車 16、象 44、馬 64 回合）。',
+  board: { width: 8, height: 8, cell: 'square', diagonals: true },
+  pieces: sittuyinPieces,
+  setup: mirrorSetup({
+    2: ['y.p', 'y.p', 'y.p', 'y.p', null, null, null, null],
+    3: [null, null, null, null, 'y.p', 'y.p', 'y.p', 'y.p'],
+  }, 8, 8, 'rotate'),
+  initialHands: { 'y.k': 1, 'y.f': 1, 'y.r': 2, 'y.s': 2, 'y.n': 2 },
+  rules: {
+    win: 'checkmate', stalemate: 'draw', promotionZone: 0, drops: true, capturesToHand: false, mustDrop: true, dropZone: 3,
+    counting: 'asean', promotionOnlyStalemate: true, repetition: 3, moveLimit: 100,
+  },
+  sideNames: ['紅方', '黑方'], sideColors: ['#c0392b', '#222222'],
+};
+
+const BASE_PRESETS: VariantDef[] = [chess, xiangqi, vietnamese, shogi, janggi, shatar, makruk, ouk, sittuyin, shatranj];
+
+// ---------- 英文名稱與說明 ----------
+const VARIANT_EN: Record<string, { name: string; description: string; sides: [string, string]; options?: string[] }> = {
+  chess: {
+    name: 'Chess', sides: ['White', 'Black'],
+    description: 'International chess under FIDE Laws: castling, en passant and promotion; threefold repetition and the 50-move rule can be claimed; fivefold repetition, the 75-move rule and insufficient material draw automatically.',
+  },
+  xiangqi: {
+    name: 'Xiangqi (Chinese chess)', sides: ['Red', 'Black'],
+    description: 'River, palaces, blockable horse and elephant, cannons that capture by jumping, generals that may not face each other. Asian Xiangqi Federation rules: perpetual check and perpetual chase lose; stalemate loses.',
+  },
+  cotuong: {
+    name: 'Cờ tướng (Vietnamese chess)', sides: ['Red', 'Black'],
+    description: 'Same moves as xiangqi with Vietnamese piece names. The Vietnam federation rules do not fix how many repetitions trigger a ruling, so perpetual check and chase follow AXF rules for now.',
+  },
+  shogi: {
+    name: 'Shogi (Japanese chess)', sides: ['Sente', 'Gote'],
+    description: 'Captured pieces can be dropped back; pieces promote in the last three ranks. Japan Shogi Association rules: nifu, uchifuzume, sennichite, perpetual-check sennichite, jishōgi and impasse declaration.',
+  },
+  janggi: {
+    name: 'Janggi (Korean chess)', sides: ['Cho (Blue)', 'Han (Red)'],
+    description: 'Official tournament rules: Han then Cho choose their horse/elephant setup, Cho moves first; diagonal moves along palace lines; cannons must jump and may not jump or capture cannons; passing allowed; a pass during bikjang, repetition, 50 moves without capture and double passes are decided on points (Han +1.5); perpetual check loses.',
+    options: ['Inner elephants', 'Outer elephants', 'Left inner, right outer', 'Left outer, right inner'],
+  },
+  shatar: {
+    name: 'Shatar (Mongolian chess)', sides: ['White', 'Black'],
+    description: 'Traditional rules: the d-pawns start already advanced; the bers moves as a rook or one step diagonally; pawns step one square and promote to bers; no castling; mate by knights alone is not allowed, and a mating series of checks must include a check by a rook, knight or bers (otherwise Niol, a draw); a bare king is a draw (Robado).',
+  },
+  makruk: {
+    name: 'Makruk (Thai chess)', sides: ['White', 'Black'],
+    description: 'Pawns start on the third rank and promote to met on the sixth; the met steps one square diagonally and the khon moves like a shogi silver. Board’s and pieces’ honour counting rules.',
+  },
+  ouk: {
+    name: 'Ouk Chatrang (Cambodian chess)', sides: ['White', 'Black'],
+    description: 'Like makruk. On its first move the king may leap like a knight to the next rank (not while in check, and lost for good once an enemy rook reaches its rank or file); the neang may jump two squares forward on its first move.',
+  },
+  sittuyin: {
+    name: 'Sittuyin (Burmese chess)', sides: ['Red', 'Black'],
+    description: 'Only the pawns start on the board; starting with Red, players take turns placing the rest in their first three ranks (chariots on the back rank only). A pawn on the opponent’s diagonal may promote to a general in place or one step diagonally, only while that side has no general, and the promotion may not attack or give check. Counting starts against a lone king (chariot 16, elephant 44, horse 64 moves).',
+  },
+  shatranj: {
+    name: 'Shatranj (Persian chess)', sides: ['White', 'Black'],
+    description: 'The ancestor of chess. The ferz steps one square diagonally and the alfil leaps two squares diagonally. Stalemating the opponent wins; baring the opponent’s king wins unless they can bare yours on the next move (draw).',
+  },
+};
+const PIECE_EN: Record<string, string> = {
+  'c.k': 'King', 'c.q': 'Queen', 'c.r': 'Rook', 'c.b': 'Bishop', 'c.n': 'Knight', 'c.p': 'Pawn',
+  'x.k': 'General', 'x.a': 'Advisor', 'x.e': 'Elephant', 'x.h': 'Horse', 'x.r': 'Chariot', 'x.c': 'Cannon', 'x.p': 'Soldier',
+  'v.k': 'Tướng (General)', 'v.a': 'Sĩ (Advisor)', 'v.e': 'Tượng (Elephant)', 'v.h': 'Mã (Horse)', 'v.r': 'Xe (Chariot)', 'v.c': 'Pháo (Cannon)', 'v.p': 'Tốt (Soldier)',
+  's.k': 'King', 's.r': 'Rook', 's.b': 'Bishop', 's.g': 'Gold', 's.s': 'Silver', 's.n': 'Knight', 's.l': 'Lance', 's.p': 'Pawn',
+  's.+r': 'Dragon', 's.+b': 'Horse', 's.+s': 'Promoted silver', 's.+n': 'Promoted knight', 's.+l': 'Promoted lance', 's.+p': 'Tokin',
+  'j.k': 'General', 'j.a': 'Guard', 'j.e': 'Elephant', 'j.h': 'Horse', 'j.r': 'Chariot', 'j.c': 'Cannon', 'j.p': 'Soldier',
+  'm.k': 'Noyon (King)', 'm.q': 'Bers', 'm.b': 'Temee (Camel)', 'm.n': 'Mori (Horse)', 'm.r': 'Tereg (Cart)', 'm.p': 'Khüü (Pawn)',
+  't.k': 'Khun (King)', 't.m': 'Met', 't.s': 'Khon', 't.n': 'Ma (Horse)', 't.r': 'Rua (Boat)', 't.p': 'Bia (Pawn)',
+  'o.k': 'Ang (King)', 'o.m': 'Neang (Queen)', 'o.s': 'Kol', 'o.n': 'Seh (Horse)', 'o.r': 'Tuk (Boat)', 'o.p': 'Trey (Fish)',
+  'y.k': 'Min-gyi (King)', 'y.f': 'Sit-ke (General)', 'y.s': 'Sin (Elephant)', 'y.n': 'Myin (Horse)', 'y.r': 'Yahhta (Chariot)', 'y.p': 'Ne (Pawn)',
+  'p.k': 'Shah (King)', 'p.f': 'Ferz', 'p.a': 'Alfil', 'p.n': 'Faras (Horse)', 'p.r': 'Rukh', 'p.p': 'Baidaq (Pawn)',
+};
+
+export const PRESETS: VariantDef[] = BASE_PRESETS.map(v => {
+  const e = VARIANT_EN[v.id];
+  const pieces = Object.fromEntries(Object.entries(v.pieces).map(([id, p]) => [id, { ...p, nameEn: PIECE_EN[id] ?? p.name }]));
+  const setupChoice = v.setupChoice && e?.options
+    ? { ...v.setupChoice, options: v.setupChoice.options.map((o, i) => ({ ...o, nameEn: e.options![i] })) }
+    : v.setupChoice;
+  return e ? { ...v, nameEn: e.name, descriptionEn: e.description, sideNamesEn: e.sides, pieces, setupChoice } : { ...v, pieces };
+});
 
 /** 所有預設棋子組成的棋子庫（供自訂模式挑選） */
-export function pieceLibrary(): { group: string; pieces: PieceDef[] }[] {
-  return PRESETS.map(v => ({ group: v.name, pieces: Object.values(v.pieces) }));
+export function pieceLibrary(): { variant: VariantDef; pieces: PieceDef[] }[] {
+  return PRESETS.map(v => ({ variant: v, pieces: Object.values(v.pieces) }));
 }

@@ -104,7 +104,7 @@ describe('southeast asia / persia', () => {
     st.board[4] = { type: 'p.k', side: 0 };
     st.board[0] = { type: 'p.r', side: 0 };
     st.board[60] = { type: 'p.k', side: 1 };
-    expect(e.result(st)).toMatchObject({ kind: 'win', winner: 0, reason: '光王' });
+    expect(e.result(st)).toMatchObject({ kind: 'win', winner: 0, reason: { zh: '光王' } });
   });
 });
 
@@ -231,7 +231,7 @@ describe('FIDE and JSA rules', () => {
     const loop = ['g1f3', 'g8f6', 'f3g1', 'f6g8'];
     const h3 = run(e, [...loop, ...loop]);
     expect(e.result(h3[h3.length - 1], h3).kind).toBe('ongoing');
-    expect(e.claimReason(h3[h3.length - 1], h3)).toContain('3');
+    expect(e.claimReason(h3[h3.length - 1], h3)?.zh).toContain('3');
     const h5 = run(e, [...loop, ...loop, ...loop, ...loop]);
     expect(e.result(h5[h5.length - 1], h5)).toMatchObject({ kind: 'draw' });
   });
@@ -300,6 +300,7 @@ describe('perft vs Fairy-Stockfish', () => {
     ['makruk', [23, 529, 12012]],
     ['ouk', [25, 625, 15031]],
     ['shatranj', [16, 256, 4176]],
+    ['sittuyin', [88, 7744, 580096]],
   ];
   for (const [id, expected, choices] of cases) {
     it(id, () => {

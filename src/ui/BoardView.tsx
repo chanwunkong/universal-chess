@@ -34,6 +34,10 @@ export function BoardView({ variant, board, flipped, selected, targets, lastMove
         className={checkered ? (dark ? 'sq-dark' : 'sq-light') : inZone ? 'sq-wood zone' : 'sq-wood'}
         stroke={checkered ? 'none' : 'var(--board-line)'} strokeWidth={1} />);
     }
+    if (variant.board.diagonals) {
+      bg.push(<line key="d1" x1={cx(0)} y1={cy(0)} x2={cx(W - 1)} y2={cy(H - 1)} stroke="var(--board-line)" strokeWidth={2} opacity={0.55} />);
+      bg.push(<line key="d2" x1={cx(W - 1)} y1={cy(0)} x2={cx(0)} y2={cy(H - 1)} stroke="var(--board-line)" strokeWidth={2} opacity={0.55} />);
+    }
     if (river) bg.push(<line key="river" x1={0} x2={W * S} y1={(H / 2) * S} y2={(H / 2) * S} stroke="var(--river)" strokeWidth={5} />);
     palaces.forEach((p, i) => {
       const x1 = Math.min(cx(p.x), cx(p.x + p.w - 1)), x2 = Math.max(cx(p.x), cx(p.x + p.w - 1));

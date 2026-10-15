@@ -1,5 +1,11 @@
 // 通用棋類引擎的資料模型：每個變體 = 棋盤 + 棋子定義 + 規則。
 
+/** 中英雙語文字 */
+export interface Text {
+  zh: string;
+  en: string;
+}
+
 export type Side = 0 | 1; // 0 = 下方先手（紅/白/先手），1 = 上方
 export type Vec = [number, number]; // [dx, dy]，以棋子擁有者視角，dy > 0 為「前進」
 
@@ -32,6 +38,7 @@ export interface MoveRule {
 export interface PieceDef {
   id: string;
   name: string;
+  nameEn?: string;
   /** 兩方顯示文字 */
   labels: [string, string];
   /** 外觀：disc 圓形棋子、shogi 五角形、glyph 西洋棋符號、octagon 八角形 */
@@ -62,6 +69,10 @@ export interface PieceDef {
   minor?: 'knight' | 'bishop';
   /** 中國象棋長捉判定（AXF）中的兵種 */
   xqRole?: 'king' | 'advisor' | 'elephant' | 'horse' | 'rook' | 'cannon' | 'soldier';
+  /** 只能打入（佈陣）在己方最前 N 排以內（緬甸象棋的車：1） */
+  dropRanks?: number;
+  /** 緬甸象棋式升變：在指定格子（先手視角）可原地或斜一格升變為 to，同時只能有一枚 to，且不能藉升變攻擊或將軍 */
+  sittuyin?: { to: string; squares: Vec[] };
   /** 泰國／柬埔寨數步規則中的身分 */
   countAs?: 'rook' | 'bishop' | 'knight' | 'queen';
 }
@@ -82,6 +93,8 @@ export interface BoardDef {
   checkered?: boolean;
   river?: boolean;
   palaces?: Palace[];
+  /** 畫出兩條長對角線（緬甸象棋） */
+  diagonals?: boolean;
 }
 
 export interface RulesDef {
@@ -96,8 +109,16 @@ export interface RulesDef {
   allowPass?: boolean;
   /** 光王判負：只剩王的一方輸；但若能在下一步也把對方吃到只剩王則和棋 */
   bareKing?: boolean;
-  /** 數步規則（棋盤數／棋子數） */
-  counting?: 'makruk' | 'cambodian';
+  /** 數步規則（棋盤數／棋子數；asean = 緬甸象棋，只有光王時的棋子數） */
+  counting?: 'makruk' | 'cambodian' | 'asean';
+  /** 吃掉的棋子是否進入手中（預設與 drops 相同） */
+  capturesToHand?: boolean;
+  /** 手上還有棋子時必須先打入（緬甸象棋開局佈陣） */
+  mustDrop?: boolean;
+  /** 只能打入在己方最前 N 排（0 = 不限） */
+  dropZone?: number;
+  /** 只剩王與一兵、未被將軍且只能升變時和棋（緬甸象棋） */
+  promotionOnlyStalemate?: boolean;
   /** 將死時，若所有將軍的棋子都屬於這些類型，該步不合法（蒙古象棋：不能用馬將死） */
   noMateBy?: string[];
   /** 將死前的連續將軍中，至少要有一次由這些棋子將軍，否則和棋（蒙古象棋 shak 規則） */
@@ -140,19 +161,24 @@ export interface SetupChoice {
   /** 選擇順序（例如漢方先選） */
   order: Side[];
   /** 每個選項的擺放（以該方視角：x 由左至右、y 由己方底線起算） */
-  options: { name: string; placements: { x: number; y: number; type: string }[] }[];
+  options: { name: string; nameEn?: string; placements: { x: number; y: number; type: string }[] }[];
 }
 
 export interface VariantDef {
   id: string;
   name: string;
+  nameEn?: string;
   description?: string;
+  descriptionEn?: string;
   board: BoardDef;
   pieces: Record<string, PieceDef>;
   setup: Placement[];
   setupChoice?: SetupChoice;
+  /** 開局時雙方手上的棋子（緬甸象棋佈陣） */
+  initialHands?: Record<string, number>;
   rules: RulesDef;
   sideNames: [string, string];
+  sideNamesEn?: [string, string];
   sideColors: [string, string];
   custom?: boolean;
 }
@@ -176,6 +202,8 @@ export interface Move {
   pass?: boolean;
   /** 只有在未被將軍時才合法 */
   needNoCheck?: boolean;
+  /** 這一步不能將軍（緬甸象棋升變） */
+  noCheck?: boolean;
 }
 
 export interface GameState {
@@ -197,5 +225,6 @@ export interface GameState {
 
 export type Result =
   | { kind: 'ongoing'; check: boolean }
-  | { kind: 'win'; winner: Side; reason: string }
-  | { kind: 'draw'; reason: string };
+  | { kind: 'win'; winner: Side; reason: Text }
+  /** replay：依規則應交換先後重下（將棋千日手、持將棋） */
+  | { kind: 'draw'; reason: Text; replay?: boolean };

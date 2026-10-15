@@ -4,6 +4,7 @@ import type { GameState, Move, Result, Side, VariantDef } from '../engine/types'
 import type { AIRequest } from '../engine/ai.worker';
 import { BoardView } from './BoardView';
 import { PieceIcon } from './PieceGlyph';
+import { LangToggle, useLang } from '../i18n';
 
 type Player = 'human' | 'ai';
 type Level = AIRequest['level'];
@@ -15,6 +16,9 @@ interface Props {
 }
 
 export function GameView({ variant, onBack, onEdit }: Props) {
+  const { t, tx, vName, vDesc, side: sideName, pName } = useLang();
+  const sn = (s: Side) => sideName(variant, s);
+  const both = (s: Side) => ({ zh: variant.sideNames[s], en: variant.sideNamesEn?.[s] ?? variant.sideNames[s] });
   const engine = useMemo(() => new Engine(variant), [variant]);
   const [history, setHistory] = useState<GameState[]>(() => [engine.initialState()]);
   const [moves, setMoves] = useState<Move[]>([]);
@@ -66,7 +70,7 @@ export function GameView({ variant, onBack, onEdit }: Props) {
       // FIDE 9.2.1.1：先宣告要走的棋，走完後局面符合條件即和棋；不符合則照常續弈
       const next = engine.makeMove(st, m);
       const r = engine.claimReason(next, [...history, next]);
-      if (r) setClaimed({ kind: 'draw', reason: `要求和棋成立（${r}）` });
+      if (r) setClaimed({ kind: 'draw', reason: { zh: `要求和棋成立（${r.zh}）`, en: `Draw claim accepted (${r.en})` } });
       setClaimPending(false);
     }
     setHistory(h => [...h, engine.makeMove(h[h.length - 1], m)]);
@@ -103,7 +107,8 @@ export function GameView({ variant, onBack, onEdit }: Props) {
     // 可以要求和棋且子力不佔優時，電腦提出和棋要求
     const claim = engine.claimReason(st, history);
     if (claim && material(st.turn) <= material((1 - st.turn) as Side)) {
-      setClaimed({ kind: 'draw', reason: `${variant.sideNames[st.turn]}要求和棋（${claim}）` });
+      const n = both(st.turn);
+      setClaimed({ kind: 'draw', reason: { zh: `${n.zh}要求和棋（${claim.zh}）`, en: `${n.en} claimed a draw (${claim.en})` } });
       return;
     }
     // 入玉宣言能獲勝時，電腦宣言
@@ -177,7 +182,7 @@ export function GameView({ variant, onBack, onEdit }: Props) {
 
   const last = moves[moves.length - 1];
   const checkSqs = result.kind === 'ongoing' && result.check ? engine.royals(st, st.turn)
-    : result.kind === 'win' && result.reason === '將死' ? engine.royals(st, st.turn) : [];
+    : result.kind === 'win' && result.reason.zh === '將死' ? engine.royals(st, st.turn) : [];
   const passMove = legal.find(m => m.pass);
 
   const hand = (side: Side) => {
@@ -185,8 +190,8 @@ export function GameView({ variant, onBack, onEdit }: Props) {
     const entries = Object.entries(st.hands[side]).filter(([, n]) => n > 0);
     return (
       <div className={`hand ${st.turn === side ? 'active' : ''}`}>
-        <span className="hand-label">{variant.sideNames[side]} 持駒</span>
-        {entries.length === 0 && <span className="muted">（無）</span>}
+        <span className="hand-label">{sn(side)} {variant.rules.mustDrop ? t('待佈陣', 'to place') : t('持駒', 'in hand')}</span>
+        {entries.length === 0 && <span className="muted">{t('（無）', '(none)')}</span>}
         {entries.map(([type, n]) => {
           const sel = selected && 'drop' in selected && selected.drop === type && st.turn === side;
           return (
@@ -202,10 +207,11 @@ export function GameView({ variant, onBack, onEdit }: Props) {
     );
   };
 
-  const status = choosing ? `等待${variant.sideNames[chooser!]}選擇開局擺法` : result.kind === 'win'
-    ? `${variant.sideNames[result.winner]}獲勝（${result.reason}）`
-    : result.kind === 'draw' ? `和棋（${result.reason}）`
-      : `輪到${variant.sideNames[st.turn]}${result.check ? '・將軍！' : ''}${thinking ? '・AI 思考中…' : ''}${claimPending ? '・請走出要求和棋的那一步' : ''}`;
+  const status = choosing ? t(`等待${sn(chooser!)}選擇開局擺法`, `Waiting for ${sn(chooser!)} to choose a setup`) : result.kind === 'win'
+    ? t(`${sn(result.winner)}獲勝（${tx(result.reason)}）`, `${sn(result.winner)} wins (${tx(result.reason)})`)
+    : result.kind === 'draw' ? t(`和棋（${tx(result.reason)}）`, `Draw (${tx(result.reason)})`)
+      : t(`輪到${sn(st.turn)}`, `${sn(st.turn)} to move`) + (result.check ? t('・將軍！', ' · Check!') : '') +
+        (thinking ? t('・電腦思考中…', ' · Computer thinking…') : '') + (claimPending ? t('・請走出要求和棋的那一步', ' · Play the move for your draw claim') : '');
 
   const topSide: Side = flipped ? 0 : 1;
 
@@ -215,33 +221,40 @@ export function GameView({ variant, onBack, onEdit }: Props) {
     legal.some(m => { const n = engine.makeMove(st, m); return !!engine.claimReason(n, [...history, n]); })));
 
   function requestDraw() {
-    if (claimNow) setClaimed({ kind: 'draw', reason: `${variant.sideNames[st.turn]}要求和棋成立（${claimNow}）` });
+    if (claimNow) {
+      const n = both(st.turn);
+      setClaimed({ kind: 'draw', reason: { zh: `${n.zh}要求和棋成立（${claimNow.zh}）`, en: `${n.en} claimed a draw (${claimNow.en})` } });
+    }
     else setClaimPending(p => !p);
   }
 
   function declareImpasse() {
     const d = engine.impasseDeclaration(st);
     setDialog({
-      title: '入玉宣言',
-      lines: [...d.conditions.map(([t, ok]) => `${ok ? '✔' : '✘'} ${t}`), '', `宣言結果：${d.result.kind === 'draw' ? '無勝負' : d.result.kind === 'win' && d.result.winner === st.turn ? '宣言方勝' : '宣言方負'}`],
-      actions: [{ label: '取消', run: () => {} }, { label: '宣言', primary: true, run: () => setClaimed(d.result) }],
+      title: t('入玉宣言', 'Impasse declaration'),
+      lines: [...d.conditions.map(([c, ok]) => `${ok ? '✔' : '✘'} ${tx(c)}`), '',
+        t('宣言結果：', 'Outcome: ') + (d.result.kind === 'draw' ? t('無勝負', 'no result')
+          : d.result.kind === 'win' && d.result.winner === st.turn ? t('宣言方勝', 'declarer wins') : t('宣言方負', 'declarer loses'))],
+      actions: [{ label: t('取消', 'Cancel'), run: () => {} }, { label: t('宣言', 'Declare'), primary: true, run: () => setClaimed(d.result) }],
     });
   }
 
   function proposeImpasse() {
     const opp = (1 - st.turn) as Side;
     const r = engine.agreeImpasse(st);
-    const pts = `${variant.sideNames[0]} ${engine.impasseTotal(st, 0)} 點、${variant.sideNames[1]} ${engine.impasseTotal(st, 1)} 點`;
+    const pts = t(`${sn(0)} ${engine.impasseTotal(st, 0)} 點、${sn(1)} ${engine.impasseTotal(st, 1)} 點`,
+      `${sn(0)} ${engine.impasseTotal(st, 0)}, ${sn(1)} ${engine.impasseTotal(st, 1)} points`);
     if (players[opp] === 'ai') {
       // 電腦只在自己不會因點數不足而輸時同意
       if (engine.impasseTotal(st, opp) >= 24) setClaimed(r);
-      else setDialog({ title: '持將棋', lines: [`電腦不同意持將棋（${pts}）。`], actions: [{ label: '確定', primary: true, run: () => {} }] });
+      else setDialog({ title: t('持將棋', 'Jishōgi'), lines: [t(`電腦不同意持將棋（${pts}）。`, `The computer declines (${pts}).`)], actions: [{ label: t('確定', 'OK'), primary: true, run: () => {} }] });
       return;
     }
     setDialog({
-      title: `${variant.sideNames[st.turn]}提議持將棋`,
-      lines: [`請${variant.sideNames[opp]}決定是否同意。`, `點數：${pts}（大駒 5 點、小駒 1 點；不足 24 點的一方負）`],
-      actions: [{ label: '不同意', run: () => {} }, { label: '同意', primary: true, run: () => setClaimed(r) }],
+      title: t(`${sn(st.turn)}提議持將棋`, `${sn(st.turn)} proposes jishōgi`),
+      lines: [t(`請${sn(opp)}決定是否同意。`, `${sn(opp)}, do you agree?`),
+        t(`點數：${pts}（大駒 5 點、小駒 1 點；不足 24 點的一方負）`, `Points: ${pts} (rook/bishop 5, others 1; under 24 loses)`)],
+      actions: [{ label: t('不同意', 'Decline'), run: () => {} }, { label: t('同意', 'Agree'), primary: true, run: () => setClaimed(r) }],
     });
   }
 
@@ -249,13 +262,15 @@ export function GameView({ variant, onBack, onEdit }: Props) {
     setPlayers(p => [p[1], p[0]]);
     restart();
   }
-  const lastText = last ? `${moves.length}. ${engine.notation(last, history[moves.length - 1].turn)}` : '';
+  const note = (m: Move, i: number) => (m.pass ? t('停著', 'Pass') : engine.notation(m, history[i].turn));
+  const lastText = last ? `${moves.length}. ${note(last, moves.length - 1)}` : '';
 
   return (
     <div className={`game ${variant.rules.drops ? 'has-hands' : ''}`}>
       <header className="topbar">
-        <button className="icon-btn" onClick={onBack} aria-label="返回">‹</button>
-        <h2>{variant.name}</h2>
+        <button className="icon-btn" onClick={onBack} aria-label={t('返回', 'Back')}>‹</button>
+        <h2>{vName(variant)}</h2>
+        <LangToggle />
       </header>
 
       <div className={`status ${over ? 'over' : ''}`}>
@@ -265,8 +280,9 @@ export function GameView({ variant, onBack, onEdit }: Props) {
       </div>
       {countInfo && !over && (
         <div className="count-bar">
-          {countInfo.kind === 'board' ? '棋盤數' : '棋子數'}・{variant.sideNames[countInfo.side]}數步：
-          第 <b>{Math.ceil(countInfo.ply / 2)}</b> / {countInfo.limit / 2} 步
+          {countInfo.kind === 'board' ? t('棋盤數', "Board's honour") : t('棋子數', "Pieces' honour")}・
+          {t(`${sn(countInfo.side)}數步：第 `, `${sn(countInfo.side)} counting: `)}
+          <b>{Math.ceil(countInfo.ply / 2)}</b> / {countInfo.limit / 2}{t(' 步', '')}
         </div>
       )}
 
@@ -280,77 +296,77 @@ export function GameView({ variant, onBack, onEdit }: Props) {
       </div>
 
       <nav className="actionbar">
-        <button onClick={undo} disabled={history.length < 2 && !claimed}><i>↶</i>悔棋</button>
-        <button onClick={() => setFlipped(f => !f)}><i>⇅</i>翻轉</button>
-        {passMove && <button onClick={() => play(passMove)} disabled={over || aiTurn}><i>⏸</i>停著</button>}
+        <button onClick={undo} disabled={history.length < 2 && !claimed}><i>↶</i>{t('悔棋', 'Undo')}</button>
+        <button onClick={() => setFlipped(f => !f)}><i>⇅</i>{t('翻轉', 'Flip')}</button>
+        {passMove && <button onClick={() => play(passMove)} disabled={over || aiTurn}><i>⏸</i>{t('停著', 'Pass')}</button>}
         {humanTurn && engine.canDeclareCount(st, st.turn) && (
-          <button onClick={() => replaceState(engine.declareCount(st, st.turn))}><i>#</i>開始數步</button>
+          <button onClick={() => replaceState(engine.declareCount(st, st.turn))}><i>#</i>{t('開始數步', 'Start count')}</button>
         )}
         {humanTurn && st.boardCount?.side === st.turn && (
-          <button onClick={() => replaceState(engine.stopCount(st))}><i>■</i>停止數步</button>
+          <button onClick={() => replaceState(engine.stopCount(st))}><i>■</i>{t('停止數步', 'Stop count')}</button>
         )}
-        {over && result.kind === 'draw' && result.reason.includes('重下') && (
-          <button className="primary" onClick={replaySwapped}><i>⇄</i>交換先後重下</button>
+        {over && result.kind === 'draw' && result.replay && (
+          <button className="primary" onClick={replaySwapped}><i>⇄</i>{t('交換先後重下', 'Replay, swap sides')}</button>
         )}
         {humanTurn && claimAvailable && (
-          <button className={claimPending ? 'active' : ''} onClick={requestDraw}><i>½</i>{claimPending ? '取消要求' : '要求和棋'}</button>
+          <button className={claimPending ? 'active' : ''} onClick={requestDraw}><i>½</i>{claimPending ? t('取消要求', 'Cancel claim') : t('要求和棋', 'Claim draw')}</button>
         )}
         {humanTurn && variant.rules.impasse && engine.royals(st, st.turn).some(k => engine.inRegion(k, st.turn, 'promoZone')) && (
-          <button onClick={declareImpasse}><i>玉</i>入玉宣言</button>
+          <button onClick={declareImpasse}><i>玉</i>{t('入玉宣言', 'Declare impasse')}</button>
         )}
         {humanTurn && variant.rules.impasse && engine.anyKingEntered(st) && (
-          <button onClick={proposeImpasse}><i>持</i>提議持將棋</button>
+          <button onClick={proposeImpasse}><i>持</i>{t('提議持將棋', 'Propose jishōgi')}</button>
         )}
         {humanTurn && st.boardCount && st.boardCount.side !== st.turn && (
-          <button onClick={() => setClaimed({ kind: 'draw', reason: '對方數步中，宣告和棋' })}><i>½</i>宣告和棋</button>
+          <button onClick={() => setClaimed({ kind: 'draw', reason: { zh: '對方數步中，宣告和棋', en: 'Draw declared during the opponent’s count' } })}><i>½</i>{t('宣告和棋', 'Declare draw')}</button>
         )}
-        <button className="mobile-only" onClick={() => setPanel('moves')}><i>☷</i>棋譜</button>
-        <button className="mobile-only" onClick={() => setPanel('menu')}><i>⚙</i>設定</button>
+        <button className="mobile-only" onClick={() => setPanel('moves')}><i>☷</i>{t('棋譜', 'Moves')}</button>
+        <button className="mobile-only" onClick={() => setPanel('menu')}><i>⚙</i>{t('設定', 'Settings')}</button>
       </nav>
 
       {panel && <div className="sheet-bg mobile-only" onClick={() => setPanel(null)} />}
       <aside className={`game-panel ${panel ? 'open' : ''} show-${panel ?? 'none'}`}>
         <div className="sheet-handle mobile-only" onClick={() => setPanel(null)} />
         <section className="panel-menu">
-          <h3>對局設定</h3>
+          <h3>{t('對局設定', 'Game settings')}</h3>
           <div className="seg-group">
             {([0, 1] as Side[]).map(s => (
               <div key={s} className="seg-row">
-                <span className="seg-label"><span className="turn-dot" style={{ background: variant.sideColors[s] }} />{variant.sideNames[s]}</span>
+                <span className="seg-label"><span className="turn-dot" style={{ background: variant.sideColors[s] }} />{sn(s)}</span>
                 <div className="seg">
                   {(['human', 'ai'] as Player[]).map(pl => (
                     <button key={pl} className={players[s] === pl ? 'on' : ''} onClick={() => {
                       const p = [...players] as [Player, Player];
                       p[s] = pl;
                       setPlayers(p);
-                    }}>{pl === 'human' ? '玩家' : '電腦'}</button>
+                    }}>{pl === 'human' ? t('玩家', 'Human') : t('電腦', 'Computer')}</button>
                   ))}
                 </div>
               </div>
             ))}
             <div className="seg-row">
-              <span className="seg-label">電腦難度</span>
+              <span className="seg-label">{t('電腦難度', 'Difficulty')}</span>
               <div className="seg">
                 {(['easy', 'normal', 'hard'] as Level[]).map(l => (
                   <button key={l} className={level === l ? 'on' : ''} onClick={() => setLevel(l)}>
-                    {({ easy: '簡單', normal: '普通', hard: '困難' })[l]}
+                    {({ easy: t('簡單', 'Easy'), normal: t('普通', 'Normal'), hard: t('困難', 'Hard') })[l]}
                   </button>
                 ))}
               </div>
             </div>
           </div>
           <div className="btns">
-            <button onClick={() => { restart(); setPanel(null); }}>重新開始</button>
-            {onEdit && <button onClick={onEdit}>編輯此變體</button>}
+            <button onClick={() => { restart(); setPanel(null); }}>{t('重新開始', 'Restart')}</button>
+            {onEdit && <button onClick={onEdit}>{t('編輯此變體', 'Edit this variant')}</button>}
           </div>
-          {variant.description && <p className="muted small">{variant.description}</p>}
+          {vDesc(variant) && <p className="muted small">{vDesc(variant)}</p>}
         </section>
         <section className="panel-moves movelist">
-          <h3>棋譜</h3>
-          {moves.length === 0 && <p className="muted small">還沒有走棋。</p>}
+          <h3>{t('棋譜', 'Moves')}</h3>
+          {moves.length === 0 && <p className="muted small">{t('還沒有走棋。', 'No moves yet.')}</p>}
           <ol>
             {moves.map((m, i) => (
-              <li key={i} className={i % 2 ? 'odd' : ''}>{engine.notation(m, history[i].turn)}</li>
+              <li key={i} className={i % 2 ? 'odd' : ''}>{note(m, i)}</li>
             ))}
           </ol>
         </section>
@@ -359,8 +375,8 @@ export function GameView({ variant, onBack, onEdit }: Props) {
       {choosing && sc && players[chooser!] === 'human' && (
         <div className="modal-bg">
           <div className="modal sheet">
-            <h3>{variant.sideNames[chooser!]}選擇開局擺法</h3>
-            <p className="muted small">由左至右是從{variant.sideNames[chooser!]}的視角看底線。</p>
+            <h3>{t(`${sn(chooser!)}選擇開局擺法`, `${sn(chooser!)}: choose your setup`)}</h3>
+            <p className="muted small">{t(`由左至右是從${sn(chooser!)}的視角看底線。`, `Left to right as seen from ${sn(chooser!)}'s back rank.`)}</p>
             <div className="setup-options">
               {sc.options.map((o, i) => (
                 <button key={i} onClick={() => choose(chooser!, i)}>
@@ -369,7 +385,7 @@ export function GameView({ variant, onBack, onEdit }: Props) {
                       <PieceIcon key={j} def={variant.pieces[p.type]} side={chooser!} colors={variant.sideColors} size={30} />
                     ))}
                   </span>
-                  <span>{o.name}</span>
+                  <span>{t(o.name, o.nameEn ?? o.name)}</span>
                 </button>
               ))}
             </div>
@@ -394,14 +410,14 @@ export function GameView({ variant, onBack, onEdit }: Props) {
       {promoChoice && (
         <div className="modal-bg" onClick={() => setPromoChoice(null)}>
           <div className="modal sheet" onClick={e => e.stopPropagation()}>
-            <h3>選擇升變</h3>
+            <h3>{t('選擇升變', 'Promotion')}</h3>
             <div className="promo-list">
               {promoChoice.map((m, i) => {
-                const t = m.promo ?? m.type;
+                const pt = m.promo ?? m.type;
                 return (
                   <button key={i} onClick={() => play(m)}>
-                    <PieceIcon def={variant.pieces[t]} side={st.turn} colors={variant.sideColors} size={48} />
-                    <span>{m.promo ? variant.pieces[t]?.name : '不升變'}</span>
+                    <PieceIcon def={variant.pieces[pt]} side={st.turn} colors={variant.sideColors} size={48} />
+                    <span>{m.promo ? pName(variant.pieces[pt]) : t('不升變', 'No promotion')}</span>
                   </button>
                 );
               })}

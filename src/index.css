@@ -90,6 +90,10 @@ input[type="color"] { padding: 0; width: 44px; height: 38px; }
 /* 首頁 */
 .home { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 .hero { padding: 16px 0 4px; }
+.hero-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.lang-toggle { display: inline-flex; gap: 0; padding: 3px; min-height: 36px; border-radius: 999px; background: var(--surface-2); border-color: transparent; flex: none; }
+.lang-toggle span { padding: 3px 10px; border-radius: 999px; font-size: 0.85rem; color: var(--muted); }
+.lang-toggle span.on { background: var(--surface); color: var(--text); font-weight: 700; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); }
 .hero h1 { font-size: 1.7rem; margin: 0; }
 .hero p { color: var(--muted); margin: 4px 0 0; font-size: 0.92rem; }
 .home h2 { font-size: 1.15rem; margin-top: 18px; }

@@ -1,9 +1,10 @@
 import { XqChase } from './xqchase';
 import type {
-  GameState, Move, MoveRule, Piece, PieceDef, RegionName, Result, Side, VariantDef,
+  Text, GameState, Move, MoveRule, Piece, PieceDef, RegionName, Result, Side, VariantDef,
 } from './types';
 
 const DUMMY = '__dummy__';
+const L = (zh: string, en: string): Text => ({ zh, en });
 
 /** 由走法規則自動估算棋子價值（以空棋盤中央可到達格數為準） */
 export function estimateValue(def: PieceDef): number {
@@ -41,6 +42,11 @@ export class Engine {
       this.palaceCenter[i] = (p.y + Math.floor(p.h / 2)) * this.W + p.x + Math.floor(p.w / 2);
     });
     for (const id in v.pieces) this.values[id] = estimateValue(v.pieces[id]);
+  }
+
+  /** 雙語的一方名稱 */
+  side(s: Side): Text {
+    return L(this.v.sideNames[s], this.v.sideNamesEn?.[s] ?? this.v.sideNames[s]);
   }
 
   def(type: string): PieceDef {
@@ -93,7 +99,8 @@ export class Engine {
         board[y * this.W + x] = { type: pl.type, side };
       }
     }
-    return { board, turn: 0, hands: [{}, {}], ep: -1, halfmoveClock: 0, passes: 0, ply: 0 };
+    const hands: [Record<string, number>, Record<string, number>] = [{ ...this.v.initialHands }, { ...this.v.initialHands }];
+    return { board, turn: 0, hands, ep: -1, halfmoveClock: 0, passes: 0, ply: 0 };
   }
 
   // ---------------- 走法生成 ----------------
@@ -152,6 +159,43 @@ export class Engine {
         }
       }
       if (r.notInCheck) for (let i = start; i < out.length; i++) out[i].needNoCheck = true;
+    }
+    if (def.sittuyin) this.genSittuyinPromotion(st, sq, pc, def, out);
+  }
+
+  /** 緬甸象棋升變（移植自 Fairy-Stockfish movegen.cpp 的 Sittuyin promotions） */
+  private genSittuyinPromotion(st: GameState, sq: number, pc: Piece, def: PieceDef, out: Move[]) {
+    const { to: target, squares } = def.sittuyin!;
+    const W = this.W;
+    let pawns = 0, promoted = 0;
+    for (const p of st.board) if (p && p.side === pc.side) {
+      if (p.type === pc.type) pawns++;
+      if (p.type === target) promoted++;
+    }
+    if (promoted >= 1) return; // 同時只能有一枚
+    if (pawns > 1) {
+      const x = sq % W, y = Math.floor(sq / W);
+      const inZone = squares.some(([zx, zy]) => zx === x && (pc.side === 0 ? zy : this.H - 1 - zy) === y);
+      if (!inZone) return;
+    }
+    const tdef = this.def(target);
+    if (!tdef) return;
+    // 目的地：原地，或升變後棋子能走到的空格
+    const dests = new Set<number>([sq]);
+    const probe = st.board.slice();
+    probe[sq] = { type: target, side: pc.side, moved: true };
+    const tmp: Move[] = [];
+    this.genPiece({ ...st, board: probe }, sq, tmp);
+    for (const m of tmp) if (!m.capture) dests.add(m.to);
+    for (const to of dests) {
+      // 升變後的棋子不能攻擊任何敵子
+      const b = st.board.slice();
+      b[sq] = null;
+      b[to] = { type: target, side: pc.side, moved: true };
+      const att: Move[] = [];
+      this.genPiece({ ...st, board: b }, to, att);
+      if (att.some(m => m.capture)) continue;
+      out.push({ from: sq, to, type: pc.type, promo: target, noCheck: true });
     }
   }
 
@@ -236,8 +280,11 @@ export class Engine {
           if (p && p.side === side && p.type === type) blockedFiles.add(i % this.W);
         }
       }
+      const zone = this.v.rules.dropZone ?? 0;
       for (let to = 0; to < this.N; to++) {
         if (st.board[to]) continue;
+        if (zone && this.rank(to, side) >= zone) continue;
+        if (def.dropRanks && this.rank(to, side) >= def.dropRanks) continue;
         if (def.mustPromoteDepth !== undefined && this.H - 1 - this.rank(to, side) < def.mustPromoteDepth) continue;
         if (blockedFiles && blockedFiles.has(to % this.W)) continue;
         out.push({ from: -1, to, type });
@@ -247,6 +294,11 @@ export class Engine {
 
   pseudoMoves(st: GameState, side: Side): Move[] {
     const out: Move[] = [];
+    // 佈陣階段：手上還有棋子就只能打入
+    if (this.v.rules.mustDrop && Object.values(st.hands[side]).some(n => n > 0)) {
+      this.genDrops(st, side, out);
+      return out;
+    }
     for (let sq = 0; sq < this.N; sq++) {
       const p = st.board[sq];
       if (p && p.side === side) this.genPiece(st, sq, out);
@@ -337,20 +389,21 @@ export class Engine {
   }
 
   /** 計分判定（韓國象棋）：回傳勝方 */
-  pointsWinner(st: GameState): { winner: Side; detail: string } | null {
+  pointsWinner(st: GameState): { winner: Side; detail: Text } | null {
     const pa = this.v.rules.pointsAdjudication;
     if (!pa) return null;
     const pts = [pa.bonus[0], pa.bonus[1]];
     for (const p of st.board) if (p && !this.v.pieces[p.type]?.royal) pts[p.side] += this.v.pieces[p.type]?.points ?? 0;
     if (pts[0] === pts[1]) return null;
     const winner: Side = pts[0] > pts[1] ? 0 : 1;
-    return { winner, detail: `${this.v.sideNames[0]} ${pts[0]} 分、${this.v.sideNames[1]} ${pts[1]} 分` };
+    const a = this.side(0), b = this.side(1);
+    return { winner, detail: L(`${a.zh} ${pts[0]} 分、${b.zh} ${pts[1]} 分`, `${a.en} ${pts[0]}, ${b.en} ${pts[1]} points`) };
   }
 
   /** 原本會和棋的結局：若規則要求計分則改以計分判定 */
-  private drawOrPoints(st: GameState, reason: string): Result {
+  private drawOrPoints(st: GameState, reason: Text): Result {
     const pw = this.pointsWinner(st);
-    if (pw) return { kind: 'win', winner: pw.winner, reason: `${reason}，計分判定（${pw.detail}）` };
+    if (pw) return { kind: 'win', winner: pw.winner, reason: L(`${reason.zh}，計分判定（${pw.detail.zh}）`, `${reason.en}; decided on points (${pw.detail.en})`) };
     return { kind: 'draw', reason };
   }
 
@@ -382,7 +435,7 @@ export class Engine {
     const cap = board[capSq];
     if (cap) {
       next.halfmoveClock = 0;
-      if (this.v.rules.drops && this.v.pieces[cap.type]) {
+      if ((this.v.rules.capturesToHand ?? this.v.rules.drops) && this.v.pieces[cap.type]) {
         const base = this.def(cap.type).demotesTo ?? cap.type;
         const h = { ...hands[side] };
         h[base] = (h[base] ?? 0) + 1;
@@ -447,6 +500,13 @@ export class Engine {
       if (r.bishop === 1) return 44;
       return 64;
     }
+    if (this.v.rules.counting === 'asean') {
+      if (pawns || n[side] > 1) return 0;
+      if (r.rook) return 16;
+      if (r.bishop) return 44;
+      if (r.knight) return 64;
+      return 0;
+    }
     if (this.v.rules.counting === 'cambodian') {
       if (n[side] > 3 || n[opp] === 1) return 0;
       if (n[side] > 1) return 63;
@@ -469,13 +529,14 @@ export class Engine {
     let ply = (st.count?.ply ?? 0) + (limit ? 1 : 0);
     const { n, pawns } = this.material(next);
     const total = n[0] + n[1];
-    if (captured && this.v.pieces[captured.type]?.pawn && n[us] === 1 && !pawns && this.countLimit(next, us)) {
+    const asean = this.v.rules.counting === 'asean';
+    if (!asean && captured && this.v.pieces[captured.type]?.pawn && n[us] === 1 && !pawns && this.countLimit(next, us)) {
       limit = 2 * this.countLimit(next, us);
       ply = 2 * total - 1;
     }
     if ((!limit || ((captured || m.promo) && n[them] === 1)) && this.countLimit(next, them)) {
       limit = 2 * this.countLimit(next, them);
-      ply = n[them] > 1 ? 0 : 2 * total;
+      ply = asean || n[them] > 1 ? 0 : 2 * total;
     }
     if (limit) next.count = { limit, ply };
     return next;
@@ -483,7 +544,7 @@ export class Engine {
 
   /** 該方現在能否宣告開始棋盤數 */
   canDeclareCount(st: GameState, side: Side): boolean {
-    if (!this.v.rules.counting || st.boardCount) return false;
+    if (!this.v.rules.counting || this.v.rules.counting === 'asean' || st.boardCount) return false;
     const { n, pawns } = this.material(st);
     if (n[side] <= 1) return false; // 只剩王時是棋子數，自動開始
     if (this.v.rules.counting === 'makruk' && pawns) return false;
@@ -562,6 +623,7 @@ export class Engine {
       if (this.inCheck(next, side)) continue;
       // 照面時，走棋必須破解照面（否則只能停著）
       if (bikjangNow && this.isBikjang(next)) continue;
+      if (m.noCheck && this.inCheck(next, opp)) continue;
       if (m.from < 0 && this.def(m.type)?.noDropMate && this.inCheck(next, opp) && this.legalMoves(next, true).length === 0) continue;
       if (rules.noMateBy?.length && this.inCheck(next, opp)) {
         const types = this.checkerTypes(next, opp);
@@ -619,35 +681,35 @@ export class Engine {
     const repeats = reps.length;
     if (rules.win === 'captureRoyal') {
       for (const s of [side, opp] as Side[]) if (!this.royals(st, s).length)
-        return { kind: 'win', winner: (1 - s) as Side, reason: '王被吃掉' };
+        return { kind: 'win', winner: (1 - s) as Side, reason: L('王被吃掉', 'King captured') };
     }
     if (rules.win === 'captureAll') {
       for (const s of [side, opp] as Side[]) {
         const any = st.board.some(p => p && p.side === s) || Object.values(st.hands[s]).some(n => n > 0);
-        if (!any) return { kind: 'win', winner: (1 - s) as Side, reason: '棋子全被吃光' };
+        if (!any) return { kind: 'win', winner: (1 - s) as Side, reason: L('棋子全被吃光', 'All pieces captured') };
       }
     }
     if (rules.bareKingDraw) {
       for (const s of [0, 1] as Side[]) {
         const n = st.board.filter(p => p && p.side === s).length + Object.values(st.hands[s]).reduce((a, b) => a + b, 0);
-        if (n <= 1) return { kind: 'draw', reason: `${this.v.sideNames[s]}只剩王（Robado，和棋）` };
+        if (n <= 1) return { kind: 'draw', reason: L(`${this.side(s).zh}只剩王（Robado，和棋）`, `${this.side(s).en} has a bare king (Robado, draw)`) };
       }
     }
     if (rules.bikjang && history && history.length >= 2 && this.isBikjang(st) && this.isBikjang(history[history.length - 2]) && st.passes > 0)
-      return this.drawOrPoints(st, '照面（빅장）後停著');
+      return this.drawOrPoints(st, L('照面（빅장）後停著', 'Pass during bikjang'));
     if (rules.bareKing) {
       // 對應 Fairy-Stockfish：extinctionPieceCount = 1、extinctionOpponentPieceCount = 2、extinctionClaim
       const cnt = ([0, 1] as Side[]).map(s =>
         st.board.filter(p => p && p.side === s).length + Object.values(st.hands[s]).reduce((a, b) => a + b, 0));
-      if (cnt[0] <= 1 && cnt[1] <= 1) return { kind: 'draw', reason: '雙方都只剩王' };
+      if (cnt[0] <= 1 && cnt[1] <= 1) return { kind: 'draw', reason: L('雙方都只剩王', 'Both kings bare') };
       for (const s of [0, 1] as Side[])
         if (cnt[s] <= 1 && cnt[1 - s] >= 2 + (s === side ? 1 : 0))
-          return { kind: 'win', winner: (1 - s) as Side, reason: '光王' };
+          return { kind: 'win', winner: (1 - s) as Side, reason: L('光王', 'Bare king') };
     }
     const check = rules.win === 'checkmate' && this.inCheck(st, side);
     if (this.legalMoves(st, true).length === 0) {
       if (check && st.boardCount && st.boardCount.side === opp)
-        return { kind: 'draw', reason: '數步的一方將死對方（和棋）' };
+        return { kind: 'draw', reason: L('數步的一方將死對方（和棋）', 'The counting side gave mate (draw)') };
       if (check && rules.mateRequiresCheckBy) {
         // 回溯這一連串的將軍（每兩手一次），至少要有一次由指定棋子將軍
         const seq = history?.length ? history : [st];
@@ -656,19 +718,26 @@ export class Engine {
           if (!this.inCheck(seq[j], side)) break;
           if (this.checkerTypes(seq[j], side).some(t => rules.mateRequiresCheckBy!.includes(t))) { valid = true; break; }
         }
-        if (!valid) return { kind: 'draw', reason: '將死前的連續將軍沒有車、馬或 Bers 參與（Niol，和棋）' };
+        if (!valid) return { kind: 'draw', reason: L('將死前的連續將軍沒有車、馬或 Bers 參與（Niol，和棋）', 'No check by a rook, knight or bers in the mating sequence (Niol, draw)') };
       }
-      if (check) return { kind: 'win', winner: opp, reason: '將死' };
-      if (rules.stalemate === 'draw') return { kind: 'draw', reason: '無子可動（和棋）' };
-      return { kind: 'win', winner: rules.stalemate === 'loss' ? opp : side, reason: '無子可動' };
+      if (check) return { kind: 'win', winner: opp, reason: L('將死', 'Checkmate') };
+      if (rules.stalemate === 'draw') return { kind: 'draw', reason: L('無子可動（和棋）', 'Stalemate (draw)') };
+      return { kind: 'win', winner: rules.stalemate === 'loss' ? opp : side, reason: L('無子可動', 'Stalemate') };
+    }
+    if (rules.promotionOnlyStalemate && !check) {
+      const mine = st.board.filter(p => p && p.side === side);
+      if (mine.length === 2 && mine.filter(p => this.v.pieces[p!.type]?.pawn).length === 1) {
+        const lm = this.legalMoves(st);
+        if (lm.length && lm.every(m => m.promo)) return { kind: 'draw', reason: L('只剩升變可走，選擇不升變（和棋）', 'Only promotions available; declined (draw)') };
+      }
     }
     const cs = this.countStatus(st);
-    if (cs && cs.ply > cs.limit) return { kind: 'draw', reason: `數步到達上限（${cs.limit / 2} 回合）` };
+    if (cs && cs.ply > cs.limit) return { kind: 'draw', reason: L(`數步到達上限（${cs.limit / 2} 回合）`, `Counting limit reached (${cs.limit / 2} moves)`) };
     if (rules.chasing === 'axf' && history) {
       this.xq ??= new XqChase(this);
       const offset = this.xq.moveRuleOffset(history);
       if (rules.moveLimit > 0 && st.halfmoveClock - offset >= rules.moveLimit)
-        return { kind: 'draw', reason: `${rules.moveLimit / 2} 回合無吃子（和棋）` };
+        return { kind: 'draw', reason: L(`${rules.moveLimit / 2} 回合無吃子（和棋）`, `${rules.moveLimit / 2} moves without capture (draw)`) };
       const r = rules.repetition > 0 ? this.xq.repetitionResult(history, rules.repetition) : null;
       if (r) return r;
       return { kind: 'ongoing', check };
@@ -684,26 +753,30 @@ export class Engine {
             moves++;
             if (this.inCheck(history[j], (1 - s) as Side)) checks++;
           }
-          if (moves > 0 && checks === moves) return { kind: 'win', winner: (1 - s) as Side, reason: '連續將軍造成重複局面（將軍方判負）' };
+          if (moves > 0 && checks === moves) return { kind: 'win', winner: (1 - s) as Side, reason: L('連續將軍造成重複局面（將軍方判負）', 'Repetition by perpetual check (checking side loses)') };
         }
       }
-      return this.drawOrPoints(st, `同一局面出現 ${repeats} 次`);
+      const rr = this.drawOrPoints(st, L(`同一局面出現 ${repeats} 次`, `Position repeated ${repeats} times`));
+      if (rr.kind === 'draw' && rules.impasse) return { ...rr, reason: L('千日手（無勝負，交換先後重下）', 'Sennichite (no result, replay with colours reversed)'), replay: true };
+      return rr;
     }
     if (rules.maxPlies && (st.ply ?? 0) >= rules.maxPlies && !check)
-      return { kind: 'draw', reason: `達到 ${rules.maxPlies} 手（持將棋，無勝負）` };
-    if (rules.deadPosition && this.isDeadByMaterial(st)) return { kind: 'draw', reason: '子力不足，雙方都無法將死' };
-    if (rules.moveLimit > 0 && st.halfmoveClock >= rules.moveLimit) return this.drawOrPoints(st, `${rules.moveLimit / 2} 回合無吃子`);
-    if (st.passes >= 2) return this.drawOrPoints(st, '雙方連續停著');
+      return { kind: 'draw', reason: L(`達到 ${rules.maxPlies} 手（持將棋，無勝負）`, `${rules.maxPlies} moves reached (jishōgi, no result)`), replay: true };
+    if (rules.deadPosition && this.isDeadByMaterial(st)) return { kind: 'draw', reason: L('子力不足，雙方都無法將死', 'Insufficient material (dead position)') };
+    if (rules.moveLimit > 0 && st.halfmoveClock >= rules.moveLimit) return this.drawOrPoints(st, L(`${rules.moveLimit / 2} 回合無吃子`, `${rules.moveLimit / 2} moves without capture`));
+    if (st.passes >= 2) return this.drawOrPoints(st, L('雙方連續停著', 'Both players passed'));
     return { kind: 'ongoing', check };
   }
 
   // ---------------- 和棋要求（FIDE 9.2、9.3） ----------------
 
   /** 目前局面輪走方可以提出的和棋要求理由 */
-  claimReason(st: GameState, history: GameState[]): string | null {
+  claimReason(st: GameState, history: GameState[]): Text | null {
     const r = this.v.rules;
-    if (r.repetitionClaim && this.repeatIndices(st, history).length >= r.repetitionClaim) return `同一局面出現 ${r.repetitionClaim} 次`;
-    if (r.moveLimitClaim && st.halfmoveClock >= r.moveLimitClaim) return `${r.moveLimitClaim / 2} 回合無吃子、無兵移動`;
+    if (r.repetitionClaim && this.repeatIndices(st, history).length >= r.repetitionClaim)
+      return L(`同一局面出現 ${r.repetitionClaim} 次`, `Position repeated ${r.repetitionClaim} times`);
+    if (r.moveLimitClaim && st.halfmoveClock >= r.moveLimitClaim)
+      return L(`${r.moveLimitClaim / 2} 回合無吃子、無兵移動`, `${r.moveLimitClaim / 2} moves without capture or pawn move`);
     return null;
   }
 
@@ -748,14 +821,15 @@ export class Engine {
   agreeImpasse(st: GameState): Result {
     const pts = [this.impasseTotal(st, 0), this.impasseTotal(st, 1)];
     const lose = ([0, 1] as Side[]).filter(s => pts[s] < 24);
-    const detail = `${this.v.sideNames[0]} ${pts[0]} 點、${this.v.sideNames[1]} ${pts[1]} 點`;
-    if (lose.length === 1) return { kind: 'win', winner: (1 - lose[0]) as Side, reason: `持將棋：${detail}，不足 24 點的一方負` };
-    if (lose.length === 2) return { kind: 'draw', reason: `持將棋：${detail}，雙方皆不足 24 點` };
-    return { kind: 'draw', reason: `持將棋：${detail}，無勝負（交換先後重下）` };
+    const a = this.side(0), b = this.side(1);
+    const zh = `持將棋：${a.zh} ${pts[0]} 點、${b.zh} ${pts[1]} 點`, en = `Jishōgi: ${a.en} ${pts[0]}, ${b.en} ${pts[1]} points`;
+    if (lose.length === 1) return { kind: 'win', winner: (1 - lose[0]) as Side, reason: L(`${zh}，不足 24 點的一方負`, `${en}; under 24 points loses`) };
+    if (lose.length === 2) return { kind: 'draw', reason: L(`${zh}，雙方皆不足 24 點`, `${en}; both under 24 points`) };
+    return { kind: 'draw', reason: L(`${zh}，無勝負（交換先後重下）`, `${en}; no result (replay with colours reversed)`), replay: true };
   }
 
   /** 入玉宣言（第 9 条第 5 項）：檢查條件並計算結果 */
-  impasseDeclaration(st: GameState): { conditions: [string, boolean][]; points: number; result: Result } {
+  impasseDeclaration(st: GameState): { conditions: [Text, boolean][]; points: number; result: Result } {
     const side = st.turn;
     const kings = this.royals(st, side);
     let inCamp = 0, pts = 0;
@@ -765,17 +839,17 @@ export class Engine {
       if (this.inRegion(i, side, 'promoZone')) { inCamp++; pts += this.piecePoints(p.type); }
     }
     for (const [t, n] of Object.entries(st.hands[side])) pts += this.piecePoints(t) * n;
-    const conditions: [string, boolean][] = [
-      ['玉在敵陣三段以內', kings.length > 0 && kings.every(k => this.inRegion(k, side, 'promoZone'))],
-      [`敵陣三段以內有 10 枚以上己方棋子（目前 ${inCamp} 枚）`, inCamp >= 10],
-      ['玉沒有被將軍', !this.inCheck(st, side)],
-      [`點數 24 點以上（目前 ${pts} 點，31 點以上勝）`, pts >= 24],
+    const conditions: [Text, boolean][] = [
+      [L('玉在敵陣三段以內', 'King inside the enemy camp (last three ranks)'), kings.length > 0 && kings.every(k => this.inRegion(k, side, 'promoZone'))],
+      [L(`敵陣三段以內有 10 枚以上己方棋子（目前 ${inCamp} 枚）`, `At least 10 own pieces in the enemy camp (now ${inCamp})`), inCamp >= 10],
+      [L('玉沒有被將軍', 'King not in check'), !this.inCheck(st, side)],
+      [L(`點數 24 點以上（目前 ${pts} 點，31 點以上勝）`, `At least 24 points (now ${pts}; 31 or more wins)`), pts >= 24],
     ];
-    const name = this.v.sideNames[side];
+    const name = this.side(side);
     let result: Result;
-    if (conditions.some(c => !c[1])) result = { kind: 'win', winner: (1 - side) as Side, reason: `${name}入玉宣言不成立，宣言方負` };
-    else if (pts >= 31) result = { kind: 'win', winner: side, reason: `${name}入玉宣言成立（${pts} 點）` };
-    else result = { kind: 'draw', reason: `${name}入玉宣言 ${pts} 點，無勝負（交換先後重下）` };
+    if (conditions.some(c => !c[1])) result = { kind: 'win', winner: (1 - side) as Side, reason: L(`${name.zh}入玉宣言不成立，宣言方負`, `${name.en}'s impasse declaration failed; the declarer loses`) };
+    else if (pts >= 31) result = { kind: 'win', winner: side, reason: L(`${name.zh}入玉宣言成立（${pts} 點）`, `${name.en}'s impasse declaration succeeded (${pts} points)`) };
+    else result = { kind: 'draw', reason: L(`${name.zh}入玉宣言 ${pts} 點，無勝負（交換先後重下）`, `${name.en} declared with ${pts} points; no result (replay with colours reversed)`), replay: true };
     return { conditions, points: pts, result };
   }
 
@@ -786,7 +860,7 @@ export class Engine {
   }
 
   notation(m: Move, side: Side): string {
-    if (m.pass) return '停著';
+    if (m.pass) return '—';
     const label = this.def(m.type)?.labels[side] ?? m.type;
     if (m.castle) return m.castle.from % this.W > m.from % this.W ? 'O-O' : 'O-O-O';
     if (m.from < 0) return `${label}*${this.sqName(m.to)}`;
