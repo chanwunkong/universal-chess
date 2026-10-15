@@ -12,10 +12,14 @@ interface Props {
   targets?: Map<number, 'move' | 'capture'>;
   lastMove?: [number, number];
   checkSqs?: number[];
+  /** 教學關卡的星星 */
+  stars?: number[];
+  /** 提示：要強調的格子 */
+  hint?: number[];
   onCell?: (sq: number) => void;
 }
 
-export function BoardView({ variant, board, flipped, selected, targets, lastMove, checkSqs, onCell }: Props) {
+export function BoardView({ variant, board, flipped, selected, targets, lastMove, checkSqs, stars, hint, onCell }: Props) {
   const { width: W, height: H, cell, checkered, river, palaces = [] } = variant.board;
   const zone = variant.rules.promotionZone;
   const pad = S * 0.45;
@@ -88,6 +92,11 @@ export function BoardView({ variant, board, flipped, selected, targets, lastMove
   if (lastMove) { if (lastMove[0] >= 0) hl(lastMove[0], 'hl-last', 'l0'); hl(lastMove[1], 'hl-last', 'l1'); }
   if (selected !== undefined && selected >= 0) hl(selected, 'hl-sel', 'sel');
   checkSqs?.forEach((sq, i) => hl(sq, 'hl-check', `chk${i}`));
+  hint?.forEach((sq, i) => hl(sq, 'hl-hint', `hint${i}`));
+  stars?.forEach(sq => {
+    const [x, y] = sqXY(sq);
+    highlights.push(<text key={`star${sq}`} x={cx(x)} y={cy(y)} className="star" textAnchor="middle" dominantBaseline="central" fontSize={S * 0.62}>★</text>);
+  });
 
   const pieces: ReactNode[] = [];
   board.forEach((p, sq) => {

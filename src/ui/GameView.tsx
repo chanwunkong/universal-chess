@@ -13,9 +13,11 @@ interface Props {
   variant: VariantDef;
   onBack: () => void;
   onEdit?: () => void;
+  /** 一開始就和電腦對下（電腦執後手、簡單難度） */
+  vsAI?: boolean;
 }
 
-export function GameView({ variant, onBack, onEdit }: Props) {
+export function GameView({ variant, onBack, onEdit, vsAI }: Props) {
   const { t, tx, vName, vDesc, side: sideName, pName } = useLang();
   const sn = (s: Side) => sideName(variant, s);
   const both = (s: Side) => ({ zh: variant.sideNames[s], en: variant.sideNamesEn?.[s] ?? variant.sideNames[s] });
@@ -24,8 +26,8 @@ export function GameView({ variant, onBack, onEdit }: Props) {
   const [moves, setMoves] = useState<Move[]>([]);
   const [selected, setSelected] = useState<{ sq: number } | { drop: string } | null>(null);
   const [promoChoice, setPromoChoice] = useState<Move[] | null>(null);
-  const [players, setPlayers] = useState<[Player, Player]>(['human', 'human']);
-  const [level, setLevel] = useState<Level>('normal');
+  const [players, setPlayers] = useState<[Player, Player]>(vsAI ? ['human', 'ai'] : ['human', 'human']);
+  const [level, setLevel] = useState<Level>(vsAI ? 'easy' : 'normal');
   const [flipped, setFlipped] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [panel, setPanel] = useState<'menu' | 'moves' | null>(null);

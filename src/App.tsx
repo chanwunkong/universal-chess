@@ -3,6 +3,7 @@ import type { VariantDef } from './engine/types';
 import { PRESETS } from './variants/presets';
 import { exportVariant, importVariant, loadCustom, saveCustom } from './storage';
 import { GameView } from './ui/GameView';
+import { Tutorial } from './ui/Tutorial';
 import { Editor, blankFrom } from './ui/editor/Editor';
 import { BoardView } from './ui/BoardView';
 import { Engine } from './engine/engine';
@@ -10,7 +11,8 @@ import { LangToggle, useLang } from './i18n';
 
 type Screen =
   | { kind: 'home' }
-  | { kind: 'game'; variant: VariantDef }
+  | { kind: 'game'; variant: VariantDef; vsAI?: boolean; from?: Screen }
+  | { kind: 'tutorial'; variant: VariantDef }
   | { kind: 'editor'; variant: VariantDef };
 
 function Thumb({ v }: { v: VariantDef }) {
@@ -42,8 +44,12 @@ export default function App() {
     });
   }
 
+  if (screen.kind === 'tutorial')
+    return <Tutorial variant={screen.variant} onBack={() => setScreen({ kind: 'home' })}
+      onPlayAI={() => setScreen({ kind: 'game', variant: screen.variant, vsAI: true, from: screen })} />;
+
   if (screen.kind === 'game')
-    return <GameView variant={screen.variant} onBack={() => setScreen({ kind: 'home' })}
+    return <GameView variant={screen.variant} vsAI={screen.vsAI} onBack={() => setScreen(screen.from ?? { kind: 'home' })}
       onEdit={() => setScreen({ kind: 'editor', variant: screen.variant.custom ? screen.variant : blankFrom(screen.variant) })} />;
 
   if (screen.kind === 'editor')
@@ -71,6 +77,7 @@ export default function App() {
               <p className="muted small">{vDesc(v)}</p>
               <div className="btns">
                 <button className="primary" onClick={() => setScreen({ kind: 'game', variant: v })}>{t('開始對局', 'Play')}</button>
+                <button onClick={() => setScreen({ kind: 'tutorial', variant: v })}>{t('教學', 'Learn')}</button>
                 <button onClick={() => setScreen({ kind: 'editor', variant: blankFrom(v) })}>{t('以此改編', 'Remix')}</button>
               </div>
             </div>
