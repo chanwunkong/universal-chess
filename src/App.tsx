@@ -4,6 +4,8 @@ import { PRESETS } from './variants/presets';
 import { exportVariant, importVariant, loadCustom, saveCustom } from './storage';
 import { GameView } from './ui/GameView';
 import { Tutorial } from './ui/Tutorial';
+import { RuleBook } from './ui/RuleBook';
+import { RULES } from './rules/catalog';
 import { Editor, blankFrom } from './ui/editor/Editor';
 import { BoardView } from './ui/BoardView';
 import { Engine } from './engine/engine';
@@ -12,7 +14,8 @@ import { LangToggle, useLang } from './i18n';
 type Screen =
   | { kind: 'home' }
   | { kind: 'game'; variant: VariantDef; vsAI?: boolean; from?: Screen }
-  | { kind: 'tutorial'; variant: VariantDef }
+  | { kind: 'tutorial'; variant: VariantDef; from?: Screen }
+  | { kind: 'rules' }
   | { kind: 'editor'; variant: VariantDef };
 
 function Thumb({ v }: { v: VariantDef }) {
@@ -44,8 +47,11 @@ export default function App() {
     });
   }
 
+  if (screen.kind === 'rules')
+    return <RuleBook onBack={() => setScreen({ kind: 'home' })} onOpenGame={v => setScreen({ kind: 'tutorial', variant: v, from: screen })} />;
+
   if (screen.kind === 'tutorial')
-    return <Tutorial variant={screen.variant} onBack={() => setScreen({ kind: 'home' })}
+    return <Tutorial variant={screen.variant} onBack={() => setScreen(screen.from ?? { kind: 'home' })}
       onPlayAI={() => setScreen({ kind: 'game', variant: screen.variant, vsAI: true, from: screen })} />;
 
   if (screen.kind === 'game')
@@ -66,6 +72,16 @@ export default function App() {
         </div>
         <p>{t('世界各地的象棋都在這裡，還能自己設計棋盤、棋子和規則。', "Chess games from around the world — and you can design your own boards, pieces and rules.")}</p>
       </header>
+
+      <button className="feature-card" onClick={() => setScreen({ kind: 'rules' })}>
+        <span className="feature-icon">📖</span>
+        <span className="feature-text">
+          <strong>{t('規則圖鑑', 'Rule encyclopedia')}</strong>
+          <span className="muted small">{t(`認識各地象棋的 ${RULES.length} 條規則：蹩馬腿、打入、長捉、數步……每條都附出處，很多可以直接試玩。`,
+            `Explore ${RULES.length} rules from chess games around the world — each with its source, many playable right away.`)}</span>
+        </span>
+        <span className="feature-arrow">›</span>
+      </button>
 
       <h2>{t('各地象棋', 'Regional games')}</h2>
       <div className="cards">
