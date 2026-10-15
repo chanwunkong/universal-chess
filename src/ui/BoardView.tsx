@@ -24,6 +24,7 @@ interface Props {
 export function BoardView({ variant, board, flipped, selected, targets, lastMove, checkSqs, stars, hint, camp, onCell }: Props) {
   const { width: W, height: H, cell, checkered, river, palaces = [] } = variant.board;
   const zone = variant.rules.promotionZone;
+  const isVoid = new Set((variant.board.voids ?? []).map(([x, y]) => y * W + x));
   const pad = S * 0.45;
   const dispX = (x: number) => (flipped ? W - 1 - x : x);
   const dispY = (y: number) => (flipped ? y : H - 1 - y);
@@ -34,6 +35,7 @@ export function BoardView({ variant, board, flipped, selected, targets, lastMove
   const bg: ReactNode[] = [];
   if (cell === 'square') {
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (isVoid.has(y * W + x)) continue;
       const dark = checkered && (x + y) % 2 === 0;
       const inZone = !checkered && zone > 0 && (y < zone || y >= H - zone);
       bg.push(<rect key={`c${x},${y}`} x={dispX(x) * S} y={dispY(y) * S} width={S} height={S}
@@ -71,6 +73,11 @@ export function BoardView({ variant, board, flipped, selected, targets, lastMove
       bg.push(<text key="r1" x={W * S * 0.27} y={ry} className="river-text" textAnchor="middle" dominantBaseline="central" fontSize={S * 0.5}>楚 河</text>);
       bg.push(<text key="r2" x={W * S * 0.73} y={ry} className="river-text" textAnchor="middle" dominantBaseline="central" fontSize={S * 0.5}>漢 界</text>);
     }
+    // 交叉點棋盤的空洞：用背景色蓋掉該點的線
+    isVoid.forEach(sq => {
+      const x = sq % W, y = Math.floor(sq / W);
+      bg.push(<rect key={`void${sq}`} x={cx(x) - S / 2} y={cy(y) - S / 2} width={S} height={S} fill="var(--bg)" />);
+    });
     palaces.forEach((p, i) => {
       bg.push(<g key={`p${i}`} className="grid">
         <line x1={cx(p.x)} y1={cy(p.y)} x2={cx(p.x + p.w - 1)} y2={cy(p.y + p.h - 1)} />
@@ -121,6 +128,7 @@ export function BoardView({ variant, board, flipped, selected, targets, lastMove
 
   const hits: ReactNode[] = [];
   if (onCell) for (let sq = 0; sq < W * H; sq++) {
+    if (isVoid.has(sq)) continue;
     const [x, y] = sqXY(sq);
     hits.push(<rect key={`hit${sq}`} x={cx(x) - S / 2} y={cy(y) - S / 2} width={S} height={S}
       fill="transparent" onClick={() => onCell(sq)} style={{ cursor: 'pointer' }} />);

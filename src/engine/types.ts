@@ -97,6 +97,8 @@ export interface BoardDef {
   palaces?: Palace[];
   /** 畫出兩條長對角線（緬甸象棋） */
   diagonals?: boolean;
+  /** 不存在的格子 [x, y]（不規則棋盤）：不能走進、打入，滑行與跳子遇到即停止 */
+  voids?: [number, number][];
 }
 
 export interface RulesDef {

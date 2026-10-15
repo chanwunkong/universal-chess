@@ -27,6 +27,8 @@ export class Engine {
   private palaceCenter: number[];
   readonly values: Record<string, number> = {};
   private xq: XqChase | null = null;
+  /** 不存在的格子（不規則棋盤） */
+  readonly void: Uint8Array;
 
   constructor(v: VariantDef) {
     this.v = v;
@@ -42,6 +44,8 @@ export class Engine {
       this.palaceCenter[i] = (p.y + Math.floor(p.h / 2)) * this.W + p.x + Math.floor(p.w / 2);
     });
     for (const id in v.pieces) this.values[id] = estimateValue(v.pieces[id]);
+    this.void = new Uint8Array(this.N);
+    for (const [x, y] of v.board.voids ?? []) if (x >= 0 && y >= 0 && x < this.W && y < this.H) this.void[y * this.W + x] = 1;
   }
 
   /** 雙語的一方名稱 */
@@ -86,7 +90,7 @@ export class Engine {
   initialState(choices?: (number | null)[]): GameState {
     const board: (Piece | null)[] = new Array(this.N).fill(null);
     for (const p of this.v.setup) {
-      if (p.x < this.W && p.y < this.H && this.v.pieces[p.type])
+      if (p.x < this.W && p.y < this.H && this.v.pieces[p.type] && !this.void[p.y * this.W + p.x])
         board[p.y * this.W + p.x] = { type: p.type, side: p.side };
     }
     const sc = this.v.setupChoice;
@@ -142,6 +146,7 @@ export class Engine {
           const x = x0 + dx, y = y0 + dy;
           if (x < 0 || y < 0 || x >= W || y >= H) continue;
           const to = y * W + x;
+          if (this.void[to]) continue;
           if (r.palaceDiag && dx !== 0 && dy !== 0 && !this.palaceDiagOk(sq, to)) continue;
           if (r.confine && !this.inRegion(to, side, r.confine)) continue;
           if (r.lame && !this.pathClear(st, x0, y0, dx, dy)) continue;
@@ -153,6 +158,7 @@ export class Engine {
             x += dx; y += dy;
             if (x < 0 || y < 0 || x >= W || y >= H) break;
             const to = y * W + x;
+            if (this.void[to]) break;
             if (r.palaceDiag && dx !== 0 && dy !== 0 && !this.palaceDiagOk(prev, to)) break;
             if (r.confine && !this.inRegion(to, side, r.confine)) break;
             if (!this.addTarget(st, sq, to, pc, def, r, out)) break;
@@ -230,7 +236,7 @@ export class Engine {
       if (i === 0 && ax !== ay) {
         if (ax > ay) x += sx; else y += sy;
       } else { x += sx; y += sy; }
-      if (st.board[y * this.W + x]) return false;
+      if (st.board[y * this.W + x] || this.void[y * this.W + x]) return false;
     }
     return true;
   }
@@ -245,6 +251,7 @@ export class Engine {
       x += dx; y += dy;
       if (x < 0 || y < 0 || x >= W || y >= H) return;
       const to = y * W + x;
+      if (this.void[to]) return;
       if (r.palaceDiag && dx !== 0 && dy !== 0 && !this.palaceDiagOk(prev, to)) return;
       prev = to;
       const t = st.board[to];
@@ -284,7 +291,7 @@ export class Engine {
       }
       const zone = this.v.rules.dropZone ?? 0;
       for (let to = 0; to < this.N; to++) {
-        if (st.board[to]) continue;
+        if (st.board[to] || this.void[to]) continue;
         if (zone && this.rank(to, side) >= zone) continue;
         if (def.dropRanks && this.rank(to, side) >= def.dropRanks) continue;
         if (def.mustPromoteDepth !== undefined && this.H - 1 - this.rank(to, side) < def.mustPromoteDepth) continue;
@@ -592,7 +599,7 @@ export class Engine {
         if (Math.abs(x - kx) < 3) continue;
         const dir = Math.sign(x - kx);
         let clear = true;
-        for (let i = kx + dir; i !== x; i += dir) if (st.board[ky * W + i]) { clear = false; break; }
+        for (let i = kx + dir; i !== x; i += dir) if (st.board[ky * W + i] || this.void[ky * W + i]) { clear = false; break; }
         if (!clear) continue;
         if (checked === null) checked = this.inCheck(st, side);
         if (checked) break;
