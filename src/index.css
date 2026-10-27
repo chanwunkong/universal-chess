@@ -132,10 +132,12 @@ input[type="color"] { padding: 0; width: 44px; height: 38px; }
 .hl-peek { fill: rgba(230, 126, 34, 0.35); }
 .mark-peek { fill: rgba(214, 102, 18, 0.75); pointer-events: none; }
 .mark-peek-cap { fill: none; stroke: rgba(214, 102, 18, 0.8); stroke-width: 5; stroke-dasharray: 8 5; pointer-events: none; }
-.piece-info { display: flex; align-items: flex-start; gap: 8px; padding: 6px 10px; margin: 0 0 4px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); }
-.piece-info .pi-text { flex: 1; min-width: 0; }
-.piece-info strong { font-size: 0.95rem; }
-.piece-info ul { margin: 2px 0 0; padding-left: 1.1em; font-size: 0.82rem; color: var(--muted); }
+.piece-info { display: flex; align-items: center; gap: 8px; height: 56px; padding: 0 10px; margin: 0 0 4px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); overflow: hidden; flex: none; cursor: pointer; }
+.piece-info.empty { justify-content: center; cursor: default; }
+.piece-info .pi-text { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+.piece-info strong { font-size: 0.92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.piece-info .pi-line { font-size: 0.8rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.piece-info .pi-more { font-size: 0.8rem; color: var(--accent); white-space: nowrap; }
 .piece-info .pi-close { min-height: 30px; min-width: 30px; padding: 0; border: none; background: transparent; font-size: 1.1rem; color: var(--muted); }
 .hl-doom { fill: rgba(200, 40, 30, 0.22); }
 .tmark { pointer-events: none; }
@@ -152,10 +154,10 @@ input[type="color"] { padding: 0; width: 44px; height: 38px; }
 
 /* 對局（手機為主） */
 .game {
-  --chrome: calc(48px + 44px + 68px + 16px + env(safe-area-inset-top) + env(safe-area-inset-bottom));
+  --chrome: calc(48px + 44px + 60px + 68px + 16px + env(safe-area-inset-top) + env(safe-area-inset-bottom));
   display: flex; flex-direction: column; min-height: 100dvh; margin: 0 -4px;
 }
-.game.has-hands { --chrome: calc(48px + 44px + 68px + 16px + 2 * 52px + env(safe-area-inset-top) + env(safe-area-inset-bottom)); }
+.game.has-hands { --chrome: calc(48px + 44px + 60px + 68px + 16px + 2 * 52px + env(safe-area-inset-top) + env(safe-area-inset-bottom)); }
 .topbar { display: flex; align-items: center; gap: 4px; height: 48px; }
 .topbar h2 { flex: 1; font-size: 1.1rem; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .status {
@@ -393,6 +395,8 @@ input[type="color"] { padding: 0; width: 44px; height: 38px; }
 .tile-block { fill: var(--accent); }
 
 /* 無盡行軍 */
+.toast.floating { position: fixed; left: 50%; top: calc(56px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 40; width: min(92vw, 520px); box-shadow: 0 6px 20px rgba(0,0,0,0.25); }
 .toast { margin: 4px 0; padding: 8px 12px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 16%, var(--surface)); font-size: 0.9rem; font-weight: 600; }
 .camp-panel { position: sticky; bottom: 0; background: var(--bg); border-top: 1px solid var(--border); padding: 6px 0 calc(8px + env(safe-area-inset-bottom)); }
-.march .lesson-board .board { max-height: calc(100dvh - 260px); }
+.march .lesson-board .board { max-height: calc(100dvh - 340px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+.march .hand { flex: none; }

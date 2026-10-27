@@ -27,6 +27,12 @@ export function March({ onBack }: { onBack: () => void }) {
   const [peek, setPeek] = useState<number | null>(null);
   const [thinking, setThinking] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  // 國境提示幾秒後自動消失（浮在畫面上，不推動版面）
+  useEffect(() => {
+    if (!toast) return;
+    const id = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(id);
+  }, [toast]);
   const [offers, setOffers] = useState<CampOffer[]>([]);
   const [bridge, setBridge] = useState<{ cells: [number, number][]; anchor?: [number, number] } | null>(null);
   const [promo, setPromo] = useState<Move[] | null>(null);
@@ -219,8 +225,8 @@ export function March({ onBack }: { onBack: () => void }) {
         <span className="points">★ {s.points}</span>
       </div>
       <p className="muted small">{t(`前進 ${s.distance} 排`, `${s.distance} rows`)}{country && !inFinal(s) ? `・${tx(country.ruleNote)}` : ''}</p>
-      {toast && <div className="toast" onClick={() => setToast(null)}>{toast}</div>}
-      {infoPiece && <PieceInfo variant={variant} type={infoPiece.type} side={infoPiece.side} onClose={() => { setPeek(null); setSelected(null); }} />}
+      {toast && <div className="toast floating" onClick={() => setToast(null)}>{toast}</div>}
+      <PieceInfo variant={variant} piece={infoPiece ? { type: infoPiece.type, side: infoPiece.side } : null} onClose={() => { setPeek(null); setSelected(null); }} />
 
       <div className="lesson-board">
         <BoardView variant={variant} board={shown} selected={selected && 'sq' in selected ? selected.sq : undefined}
@@ -229,9 +235,10 @@ export function March({ onBack }: { onBack: () => void }) {
           hint={bridgeOk ? bridgePreview : undefined} checkSqs={bridge?.anchor && !bridgeOk ? bridgePreview : undefined}
           lastMove={s.game.last ? [s.game.last.from, s.game.last.to] : undefined} onCell={onCell} />
       </div>
-      {hand.length > 0 && phase === 'march' && (
+      {phase === 'march' && (
         <div className="hand active">
           <span className="hand-label">{t('援軍', 'Reinforcements')}</span>
+          {hand.length === 0 && <span className="muted small">{t('（無）', '(none)')}</span>}
           {hand.map(([type, n]) => (
             <button key={type} className={`hand-piece ${selected && 'drop' in selected && selected.drop === type ? 'selected' : ''}`}
               disabled={!myTurn} onClick={() => setSelected({ drop: type })}>

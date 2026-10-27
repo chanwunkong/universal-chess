@@ -15,24 +15,45 @@ export function peekTargets(engine: Engine, st: GameState, sq: number): Map<numb
   return t;
 }
 
-/** 棋子資訊列：名稱、屬於哪一方、走法說明 */
-export function PieceInfo({ variant, type, side, onClose }: { variant: VariantDef; type: string; side: Side; onClose: () => void }) {
+/**
+ * 棋子資訊列：固定高度、永遠佔位，選不選棋子都不會讓棋盤移動。
+ * 只顯示名稱與第一條走法；點一下從下方彈出完整說明。
+ */
+export function PieceInfo({ variant, piece, onClose }: {
+  variant: VariantDef;
+  piece: { type: string; side: Side } | null;
+  onClose: () => void;
+}) {
   const { t, tx, pName, side: sideName } = useLang();
   const [open, setOpen] = useState(false);
-  const def = variant.pieces[type];
-  if (!def) return null;
+  const def = piece ? variant.pieces[piece.type] : undefined;
+  if (!piece || !def) {
+    return <div className="piece-info empty"><span className="muted small">{t('點任何一枚棋子，可以看它能走到哪裡。', 'Tap any piece to see where it can move.')}</span></div>;
+  }
   const lines = describePiece(def, variant);
   return (
-    <div className="piece-info">
-      <PieceIcon def={def} side={side} colors={variant.sideColors} size={34} />
-      <div className="pi-text" onClick={() => setOpen(o => !o)}>
-        <strong>{sideName(variant, side)}・{pName(def)}</strong>
-        <ul>
-          {(open ? lines : lines.slice(0, 1)).map((l, i) => <li key={i}>{tx(l)}</li>)}
-        </ul>
-        {lines.length > 1 && !open && <span className="muted small">{t('點這裡看完整走法', 'Tap for all moves')}</span>}
+    <>
+      <div className="piece-info" onClick={() => setOpen(true)}>
+        <PieceIcon def={def} side={piece.side} colors={variant.sideColors} size={34} />
+        <div className="pi-text">
+          <strong>{sideName(variant, piece.side)}・{pName(def)}</strong>
+          <span className="pi-line">{tx(lines[0])}</span>
+        </div>
+        <span className="pi-more">{t('詳細', 'Details')} ›</span>
+        <button className="pi-close" onClick={e => { e.stopPropagation(); onClose(); }} aria-label={t('關閉', 'Close')}>✕</button>
       </div>
-      <button className="pi-close" onClick={onClose} aria-label={t('關閉', 'Close')}>✕</button>
-    </div>
+      {open && (
+        <div className="modal-bg" onClick={() => setOpen(false)}>
+          <div className="modal sheet" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <PieceIcon def={def} side={piece.side} colors={variant.sideColors} size={40} />
+              <h3>{sideName(variant, piece.side)}・{pName(def)}</h3>
+              <button className="ghost" onClick={() => setOpen(false)}>{t('關閉', 'Close')}</button>
+            </div>
+            <ul className="piece-rules">{lines.map((l, i) => <li key={i}>{tx(l)}</li>)}</ul>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

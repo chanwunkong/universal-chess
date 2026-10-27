@@ -219,10 +219,7 @@ export function Campaign({ onBack }: { onBack: () => void }) {
       </p>
 
       <h3>{t('敵情', 'Battlefield')}</h3>
-      <p className="muted small">{t('點任何一枚棋子，可以看它能走到哪裡。', 'Tap any piece to see where it can move.')}</p>
-      {scout !== null && scoutState.board[scout] && (
-        <PieceInfo variant={arena.variant} type={scoutState.board[scout]!.type} side={scoutState.board[scout]!.side} onClose={() => setScout(null)} />
-      )}
+      <PieceInfo variant={arena.variant} piece={scout !== null && scoutState.board[scout] ? { type: scoutState.board[scout]!.type, side: scoutState.board[scout]!.side } : null} onClose={() => setScout(null)} />
       <div className="mix-preview">
         <BoardView variant={arena.variant} board={scoutState.board}
           peek={scout !== null && scoutState.board[scout] ? { sq: scout, targets: peekTargets(scoutEngine, scoutState, scout) } : undefined}

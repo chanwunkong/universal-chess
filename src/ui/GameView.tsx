@@ -298,9 +298,7 @@ export function GameView({ variant, onBack, onEdit, vsAI, campaign }: Props) {
         <span className="status-text">{status}</span>
         {lastText && <span className="last-move">{lastText}</span>}
       </div>
-      {infoPiece && (
-        <PieceInfo variant={variant} type={infoPiece.type} side={infoPiece.side} onClose={() => { setPeek(null); setSelected(null); }} />
-      )}
+      <PieceInfo variant={variant} piece={infoPiece ? { type: infoPiece.type, side: infoPiece.side } : null} onClose={() => { setPeek(null); setSelected(null); }} />
       {countInfo && !over && (
         <div className="count-bar">
           {countInfo.kind === 'board' ? t('棋盤數', "Board's honour") : t('棋子數', "Pieces' honour")}・
