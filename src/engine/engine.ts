@@ -689,7 +689,7 @@ export class Engine {
     const reps = this.repeatIndices(st, history);
     const repeats = reps.length;
     if (rules.win === 'captureRoyal') {
-      for (const s of [side, opp] as Side[]) if (!this.royals(st, s).length)
+      for (const s of [side, opp] as Side[]) if ((rules.royalSides ?? [0, 1]).includes(s) && !this.royals(st, s).length)
         return { kind: 'win', winner: (1 - s) as Side, reason: L('王被吃掉', 'King captured') };
     }
     if (rules.win === 'captureAll') {
@@ -773,7 +773,7 @@ export class Engine {
       return { kind: 'draw', reason: L(`達到 ${rules.maxPlies} 手（持將棋，無勝負）`, `${rules.maxPlies} moves reached (jishōgi, no result)`), replay: true };
     if (rules.deadPosition && this.isDeadByMaterial(st)) return { kind: 'draw', reason: L('子力不足，雙方都無法將死', 'Insufficient material (dead position)') };
     if (rules.moveLimit > 0 && st.halfmoveClock >= rules.moveLimit) return this.drawOrPoints(st, L(`${rules.moveLimit / 2} 回合無吃子`, `${rules.moveLimit / 2} moves without capture`));
-    if (st.passes >= 2) return this.drawOrPoints(st, L('雙方連續停著', 'Both players passed'));
+    if (st.passes >= 2 && !rules.noPassDraw) return this.drawOrPoints(st, L('雙方連續停著', 'Both players passed'));
     return { kind: 'ongoing', check };
   }
 

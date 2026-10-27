@@ -7,6 +7,7 @@ import { Tutorial } from './ui/Tutorial';
 import { RuleBook } from './ui/RuleBook';
 import { MixSetup } from './ui/MixSetup';
 import { Campaign } from './ui/Campaign';
+import { March } from './ui/March';
 import { RULES } from './rules/catalog';
 import { Editor, blankFrom } from './ui/editor/Editor';
 import { BoardView } from './ui/BoardView';
@@ -20,6 +21,7 @@ type Screen =
   | { kind: 'rules' }
   | { kind: 'mix' }
   | { kind: 'campaign' }
+  | { kind: 'march' }
   | { kind: 'editor'; variant: VariantDef };
 
 function Thumb({ v }: { v: VariantDef }) {
@@ -50,6 +52,8 @@ export default function App() {
       return list;
     });
   }
+
+  if (screen.kind === 'march') return <March onBack={() => setScreen({ kind: 'home' })} />;
 
   if (screen.kind === 'campaign') return <Campaign onBack={() => setScreen({ kind: 'home' })} />;
 
@@ -89,6 +93,14 @@ export default function App() {
           <strong>{t('規則圖鑑', 'Rule encyclopedia')}</strong>
           <span className="muted small">{t(`認識各地象棋的 ${RULES.length} 條規則：蹩馬腿、打入、長捉、數步……每條都附出處，很多可以直接試玩。`,
             `Explore ${RULES.length} rules from chess games around the world — each with its source, many playable right away.`)}</span>
+        </span>
+        <span className="feature-arrow">›</span>
+      </button>
+      <button className="feature-card" onClick={() => setScreen({ kind: 'march' })}>
+        <span className="feature-icon">🥁</span>
+        <span className="feature-text">
+          <strong>{t('無盡行軍', 'Endless March')}</strong>
+          <span className="muted small">{t('單人模式：棋盤不斷往前捲動，一路穿越各國、打倒頭目，最後將死國王。', 'Single player: the board keeps scrolling forward — cross countries, beat bosses, and checkmate the king.')}</span>
         </span>
         <span className="feature-arrow">›</span>
       </button>

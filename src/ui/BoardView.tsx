@@ -18,12 +18,18 @@ interface Props {
   hint?: number[];
   /** 可以擺放的區域（淡色標示） */
   camp?: number[];
+  /** 迷霧：這幾排（y）蓋上霧 */
+  fogRows?: number[];
+  /** 格子上的文字標記（物品等） */
+  marks?: { sq: number; text: string; cls?: string }[];
+  /** 危險：即將被捲出畫面的格子 */
+  doom?: number[];
   /** 查看對方棋子：它下一步可以走到的格子 */
   peek?: { sq: number; targets: Map<number, 'move' | 'capture'> };
   onCell?: (sq: number) => void;
 }
 
-export function BoardView({ variant, board, flipped, selected, targets, lastMove, checkSqs, stars, hint, camp, peek, onCell }: Props) {
+export function BoardView({ variant, board, flipped, selected, targets, lastMove, checkSqs, stars, hint, camp, peek, fogRows, marks: textMarks, doom, onCell }: Props) {
   const { width: W, height: H, cell, checkered, river, palaces = [] } = variant.board;
   const zone = variant.rules.promotionZone;
   const isVoid = new Set((variant.board.voids ?? []).map(([x, y]) => y * W + x));
@@ -101,6 +107,11 @@ export function BoardView({ variant, board, flipped, selected, targets, lastMove
     highlights.push(<rect key={key} x={cx(x) - S / 2} y={cy(y) - S / 2} width={S} height={S} className={cls} rx={cell === 'intersection' ? S / 2 : 0} />);
   };
   camp?.forEach((sq, i) => hl(sq, 'hl-zone', `camp${i}`));
+  doom?.forEach((sq, i) => hl(sq, 'hl-doom', `doom${i}`));
+  textMarks?.forEach(m => {
+    const [x, y] = sqXY(m.sq);
+    highlights.push(<text key={`tm${m.sq}`} x={cx(x)} y={cy(y)} className={`tmark ${m.cls ?? ''}`} textAnchor="middle" dominantBaseline="central" fontSize={S * 0.5}>{m.text}</text>);
+  });
   if (lastMove) { if (lastMove[0] >= 0) hl(lastMove[0], 'hl-last', 'l0'); hl(lastMove[1], 'hl-last', 'l1'); }
   if (selected !== undefined && selected >= 0) hl(selected, 'hl-sel', 'sel');
   if (peek) hl(peek.sq, 'hl-peek', 'peek');
@@ -134,6 +145,10 @@ export function BoardView({ variant, board, flipped, selected, targets, lastMove
     marks.push(kind === 'capture'
       ? <circle key={`p${sq}`} cx={cx(x)} cy={cy(y)} r={S * 0.46} className="mark-peek-cap" />
       : <circle key={`p${sq}`} cx={cx(x)} cy={cy(y)} r={S * 0.13} className="mark-peek" />);
+  });
+
+  fogRows?.forEach(y => {
+    marks.push(<rect key={`fog${y}`} x={0} y={dispY(y) * S} width={W * S} height={S} className="fog" />);
   });
 
   const hits: ReactNode[] = [];

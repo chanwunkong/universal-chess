@@ -107,6 +107,10 @@ export interface RulesDef {
   /** 無子可動（未被將軍）時：輪到的一方判負/判勝/和棋 */
   stalemate: 'loss' | 'win' | 'draw';
   promotionZone: number;
+  /** 吃王勝時，只有這些方失去王（旗）才算輸（預設雙方；無盡行軍只有我方有旗） */
+  royalSides?: Side[];
+  /** 雙方連續停著不判和（無盡行軍） */
+  noPassDraw?: boolean;
   /** 統一所有棋子的升變區深度（覆蓋棋子各自的設定；自由組合用） */
   promoZoneOverride?: number;
   drops?: boolean;

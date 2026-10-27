@@ -137,6 +137,11 @@ input[type="color"] { padding: 0; width: 44px; height: 38px; }
 .piece-info strong { font-size: 0.95rem; }
 .piece-info ul { margin: 2px 0 0; padding-left: 1.1em; font-size: 0.82rem; color: var(--muted); }
 .piece-info .pi-close { min-height: 30px; min-width: 30px; padding: 0; border: none; background: transparent; font-size: 1.1rem; color: var(--muted); }
+.hl-doom { fill: rgba(200, 40, 30, 0.22); }
+.tmark { pointer-events: none; }
+.tmark.supply { fill: #e8a317; }
+.tmark.recruit { fill: #2e8b57; }
+.fog { fill: rgba(120, 120, 130, 0.55); pointer-events: none; }
 .hl-zone { fill: rgba(46, 140, 220, 0.12); }
 .star { fill: #e8a317; stroke: #8a5a00; stroke-width: 1.5; paint-order: stroke; pointer-events: none; }
 .mark-move { fill: var(--mark); pointer-events: none; }
@@ -386,3 +391,8 @@ input[type="color"] { padding: 0; width: 44px; height: 38px; }
 .cost { color: #e8a317; font-weight: 700; font-size: 0.85rem; }
 .tile-mini { min-height: 34px; display: flex; align-items: center; }
 .tile-block { fill: var(--accent); }
+
+/* 無盡行軍 */
+.toast { margin: 4px 0; padding: 8px 12px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 16%, var(--surface)); font-size: 0.9rem; font-weight: 600; }
+.camp-panel { position: sticky; bottom: 0; background: var(--bg); border-top: 1px solid var(--border); padding: 6px 0 calc(8px + env(safe-area-inset-bottom)); }
+.march .lesson-board .board { max-height: calc(100dvh - 260px); }
