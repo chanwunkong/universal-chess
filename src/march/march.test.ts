@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Engine } from '../engine/engine';
 import type { Move } from '../engine/types';
-import { H, W, afterMove, applyBridge, campOffers, canBridge, currentCountry, inFinal, marchVariant, newMarch, scroll, scrollInterval, type MarchState } from './march';
+import { H, W, afterMove, wipedOut, applyBridge, campOffers, canBridge, currentCountry, inFinal, marchVariant, newMarch, scroll, scrollInterval, type MarchState } from './march';
 
 /** 簡單的自動玩家：軍旗盡量往前，其餘隨機，偏好吃子 */
 function step(s: MarchState, seed: number): MarchState {
@@ -13,12 +13,13 @@ function step(s: MarchState, seed: number): MarchState {
     const ms = e.legalMoves(g).filter(m => !m.pass);
     let m: Move | undefined;
     if (side === 0) {
-      const flagUp = ms.filter(m => m.type === 'mflag' && Math.floor(m.to / W) > Math.floor(m.from / W));
-      m = flagUp.length && (seed + st.distance) % 2 === 0 ? flagUp[0] : (ms.find(x => x.capture) ?? ms[(seed * 7 + st.distance) % Math.max(1, ms.length)]);
-    } else m = ms.find(x => x.capture && x.capture.type !== 'mflag') ?? ms[(seed * 3 + st.distance) % Math.max(1, ms.length)];
+      // 優先吃子，其次讓最下面兩排的棋子往前走（避免被拋下）
+      const back = ms.filter(m => m.from >= 0 && Math.floor(m.from / W) <= 1 && Math.floor(m.to / W) > Math.floor(m.from / W));
+      m = ms.find(x => x.capture) ?? (back.length ? back[(seed + st.distance) % back.length] : ms[(seed * 7 + st.distance) % Math.max(1, ms.length)]);
+    } else m = ms.find(x => x.capture) ?? ms[(seed * 3 + st.distance) % Math.max(1, ms.length)];
     if (m) {
       st = afterMove({ ...st, game: e.makeMove(g, m) }, m, side);
-      if (!st.game.board.some(p => p?.side === 0 && p.type === 'mflag')) return { ...st, over: { win: false, reason: { zh: '軍旗被奪', en: 'flag taken' } } };
+      if (wipedOut(st)) return { ...st, over: { win: false, reason: { zh: '全軍覆沒', en: 'wiped out' } } };
     }
   }
   st = { ...st, game: { ...st.game, turn: 0 }, movesSinceScroll: st.movesSinceScroll + 1 };
@@ -31,7 +32,7 @@ describe('endless march', () => {
     const s = newMarch('easy', 'chess', 1);
     const e = new Engine(marchVariant(s));
     expect(e.legalMoves(s.game).length).toBeGreaterThan(0);
-    expect(s.game.board.filter(p => p?.side === 0).length).toBe(6);
+    expect(s.game.board.filter(p => p?.side === 0).length).toBe(5);
   });
 
   it('scrolling shifts pieces down and drops the bottom row', () => {
@@ -40,7 +41,8 @@ describe('endless march', () => {
     s = scroll(s);
     expect(s.game.board[3]).toEqual(before);
     expect(s.distance).toBe(1);
-    expect(s.over?.win).toBe(false); // 軍旗原本在最下排，被捲出畫面
+    expect(s.lost.length).toBe(2); // 最下排的兩枚棋子被拋下
+    expect(s.over).toBeUndefined(); // 還有棋子，行軍繼續
   });
 
   it('many simulated marches run without errors, switch countries and can reach the castle', () => {
@@ -67,7 +69,7 @@ describe('endless march', () => {
     // 只保留軍旗並放在畫面中段，一路捲到王城
     const keepFlag = (st: MarchState): MarchState => {
       const board = st.game.board.map(() => null) as MarchState['game']['board'];
-      board[3 * W + 4] = { type: 'mflag', side: 0 };
+      board[3 * W + 4] = { type: 'c.k', side: 0 };
       return { ...st, game: { ...st.game, board }, rows: st.rows.map(r => ({ ...r, voids: [] })) };
     };
     let guard = 0;

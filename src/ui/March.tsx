@@ -5,7 +5,7 @@ import type { AIRequest } from '../engine/ai.worker';
 import { LangToggle, useLang } from '../i18n';
 import { STARTS, rotate } from '../campaign/campaign';
 import {
-  FOG, H, W, afterMove, applyBridge, campOffers, canBridge, bridgeCells, currentCountry, inFinal, isCamp, loadMarchRecords,
+  FOG, H, W, afterMove, wipedOut, applyBridge, campOffers, canBridge, bridgeCells, currentCountry, inFinal, isCamp, loadMarchRecords,
   marchVariant, newMarch, recordMarch, scroll, scrollInterval, type CampOffer, type Difficulty, type MarchState,
 } from '../march/march';
 import { PIECE_LIBRARY } from '../mix/build';
@@ -86,8 +86,8 @@ export function March({ onBack }: { onBack: () => void }) {
       const m = ev.data.move;
       if (!m) { endRound(cur); return; }
       let next = afterMove({ ...cur, game: e.makeMove(g, m) }, m, 1);
-      if (!next.game.board.some(p => p?.side === 0 && p.type === 'mflag')) {
-        finish(next, false, { zh: '軍旗被奪走', en: 'Your standard was captured' });
+      if (wipedOut(next)) {
+        finish(next, false, { zh: '全軍覆沒', en: 'Your army was wiped out' });
         return;
       }
       if (inFinal(next)) {
@@ -127,8 +127,8 @@ export function March({ onBack }: { onBack: () => void }) {
           <h2>{t('無盡行軍', 'Endless March')}</h2>
           <LangToggle />
         </header>
-        <p className="muted">{t('一場不中斷的行軍：棋盤每隔幾步就往前捲動一排，留在最後一排的棋子會被拋下。一路穿越各國（進入國境時全場換成該國規則），打倒頭目，最後在王城將死國王。軍旗被奪走或被拋下就結束。',
-          'One unbroken march: every few moves the board scrolls forward and anything left on the last row is lost. Cross countries (the whole board switches to their rules), defeat bosses, and finally checkmate the king in his castle. Lose your standard and the march ends.')}</p>
+        <p className="muted">{t('一場不中斷的行軍：棋盤每隔幾步就往前捲動一排，留在最後一排的棋子會被拋下。一路穿越各國（進入國境時全場換成該國規則），打倒頭目，最後在王城將死國王。全軍覆沒就結束。',
+          'One unbroken march: every few moves the board scrolls forward and anything left on the last row is lost. Cross countries (the whole board switches to their rules), defeat bosses, and finally checkmate the king in his castle. The march ends if your whole army is lost.')}</p>
         <div className="records">
           <span>{t('簡單', 'Easy')}：{t(`最遠 ${records.easy.best} 排・完成 ${records.easy.clears} 次`, `farthest ${records.easy.best} · finished ${records.easy.clears}×`)}</span>
           <span>{t('困難', 'Hard')}：{t(`最遠 ${records.hard.best} 排・完成 ${records.hard.clears} 次`, `farthest ${records.hard.best} · finished ${records.hard.clears}×`)}</span>

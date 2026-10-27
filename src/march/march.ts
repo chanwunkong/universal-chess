@@ -21,11 +21,6 @@ const CASTLE_BACK = FINAL_START + 4;
 export type Difficulty = 'easy' | 'hard';
 export type Item = 'supply' | 'recruit';
 
-/** 行軍用的旗：可以往任何方向走一步、不能吃子；被吃掉或被捲出畫面就輸 */
-export const MARCH_FLAG: PieceDef = {
-  id: 'mflag', name: '軍旗', nameEn: 'Standard', labels: ['旗', '旗'], style: 'octagon', royal: true, value: 0,
-  moves: [{ vectors: [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]], range: 1, mode: 'move' }],
-};
 /** 頭目的軍旗：不會動，奪下即擊敗頭目 */
 export const BANNER: PieceDef = {
   id: 'banner', name: '頭目軍旗', nameEn: 'Boss banner', labels: ['帥旗', '帥旗'], style: 'octagon', moves: [], value: 4,
@@ -145,7 +140,7 @@ export function newMarch(difficulty: Difficulty, start: string, seed = Date.now(
   }
   const place = (x: number, y: number, type: string) => { board[y * W + x] = { type, side: 0 }; };
   place(3, 1, kit[0]); place(4, 1, kit[1]); place(5, 1, kit[2]);
-  place(2, 0, kit[3]); place(4, 0, 'mflag'); place(6, 0, kit[4]);
+  place(2, 0, kit[3]); place(6, 0, kit[4]);
   const game: GameState = { board, turn: 0, hands: [{}, {}], ep: -1, halfmoveClock: 0, passes: 0, ply: 0 };
   const s: MarchState = {
     seed, difficulty, start, game, rows, items, distance: 0, movesSinceScroll: 0,
@@ -155,13 +150,15 @@ export function newMarch(difficulty: Difficulty, start: string, seed = Date.now(
   return s;
 }
 
-/** 我方軍旗所在的那一排決定目前的國家（越過國境線就切換） */
-export function flagRow(s: MarchState): number {
-  const i = s.game.board.findIndex(p => p?.side === 0 && p.type === 'mflag');
-  return i < 0 ? 0 : Math.floor(i / W);
+/** 以己方陣地那一排（畫面第 2 排）決定目前的國家：只在捲動時切換，不會因為棋子前後移動而來回切換 */
+export const HOME_ROW = 1;
+export const currentCountry = (s: MarchState) => countryOfRow(s.seed, s.rows[HOME_ROW].g);
+export const inFinal = (s: MarchState) => s.rows[HOME_ROW].g >= FINAL_START || s.rows[H - 1].g >= CASTLE_BACK;
+
+/** 全軍覆沒：棋盤上沒有己方棋子，手上也沒有援軍 */
+export function wipedOut(s: MarchState): boolean {
+  return !s.game.board.some(p => p?.side === 0) && !Object.values(s.game.hands[0]).some(n => n > 0);
 }
-export const currentCountry = (s: MarchState) => countryOfRow(s.seed, s.rows[flagRow(s)].g);
-export const inFinal = (s: MarchState) => s.rows[flagRow(s)].g >= FINAL_START || s.rows[H - 1].g >= CASTLE_BACK;
 
 export function scrollInterval(s: MarchState): number {
   const base = s.difficulty === 'easy' ? 4 : 3;
@@ -172,10 +169,10 @@ export function marchVariant(s: MarchState): VariantDef {
   const country = currentCountry(s);
   const voids: [number, number][] = [];
   s.rows.forEach((r, y) => r.voids.forEach(x => voids.push([x, y])));
-  const pieces: Record<string, PieceDef> = { mflag: MARCH_FLAG, banner: BANNER };
+  const pieces: Record<string, PieceDef> = { banner: BANNER };
   for (const [k, v] of Object.entries(PIECE_LIBRARY)) pieces[k] = v.def;
   const base: RulesDef = {
-    win: 'captureRoyal', royalSides: [0], stalemate: 'loss', promotionZone: 0, repetition: 0, moveLimit: 0,
+    win: 'captureRoyal', royalSides: [], stalemate: 'loss', promotionZone: 0, repetition: 0, moveLimit: 0,
     drops: true, capturesToHand: false, dropZone: 2, noPassDraw: true,
   };
   const rules: RulesDef = inFinal(s)
@@ -211,7 +208,7 @@ export function afterMove(s: MarchState, m: Move, mover: Side): MarchState {
         next.game = { ...next.game, hands: [{ ...next.game.hands[0], [d.id]: (next.game.hands[0][d.id] ?? 0) + 1 }, next.game.hands[1]] };
       }
     }
-  } else if (m.capture?.side === 0 && m.capture.type !== 'mflag') {
+  } else if (m.capture?.side === 0) {
     next.lost = [...next.lost, m.capture.type];
   }
   return next;
@@ -222,13 +219,9 @@ export function scroll(s: MarchState): MarchState {
   if (s.rows[H - 1].g >= CASTLE_BACK) return s; // 已經看得到王城，道路到此為止
   const board: GameState['board'] = new Array(W * H).fill(null);
   const lost = [...s.lost];
-  let flagLost = false;
   for (let x = 0; x < W; x++) {
     const p = s.game.board[x];
-    if (p?.side === 0) {
-      if (p.type === 'mflag') flagLost = true;
-      else lost.push(p.type);
-    }
+    if (p?.side === 0) lost.push(p.type);
   }
   for (let y = 1; y < H; y++) for (let x = 0; x < W; x++) board[(y - 1) * W + x] = s.game.board[y * W + x];
   const items: Record<number, Item> = {};
@@ -244,7 +237,7 @@ export function scroll(s: MarchState): MarchState {
   };
   const c = currentCountry(next)?.id ?? 'king';
   if (!next.visited.includes(c)) next.visited = [...next.visited, c];
-  if (flagLost) next.over = { win: false, reason: L('軍旗被拋在後方', 'Your standard was left behind') };
+  if (wipedOut(next)) next.over = { win: false, reason: L('全軍覆沒', 'Your army was wiped out') };
   return next;
 }
 
